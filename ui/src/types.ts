@@ -99,12 +99,18 @@ export interface DatasetConfig {
   control_path?: string | null;
   num_frames: number;
   shrink_video_to_frames: boolean;
-  do_i2v: boolean;
+  do_i2v?: boolean;
+  do_audio?: boolean;
+  audio_normalize?: boolean;
+  audio_preserve_pitch?: boolean;
+  fps?: number;
   flip_x: boolean;
   flip_y: boolean;
+  num_repeats?: number;
   control_path_1?: string | null;
   control_path_2?: string | null;
   control_path_3?: string | null;
+  auto_frame_count?: boolean;
 }
 
 export interface EMAConfig {
@@ -144,6 +150,7 @@ export interface TrainConfig {
   loss_type: 'mse' | 'mae' | 'wavelet' | 'stepped';
   do_differential_guidance?: boolean;
   differential_guidance_scale?: number;
+  audio_loss_multiplier?: number;
 }
 
 export interface QuantizeKwargsConfig {
@@ -200,6 +207,11 @@ export interface SampleConfig {
   fps: number;
 }
 
+export interface LoggingConfig {
+  log_every: number;
+  use_ui_logger: boolean;
+}
+
 export interface SliderConfig {
   guidance_strength?: number;
   anchor_strength?: number;
@@ -221,6 +233,7 @@ export interface ProcessConfig {
   save: SaveConfig;
   datasets: DatasetConfig[];
   train: TrainConfig;
+  logging: LoggingConfig;
   model: ModelConfig;
   sample: SampleConfig;
 }
