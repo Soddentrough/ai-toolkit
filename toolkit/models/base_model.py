@@ -1237,10 +1237,17 @@ class BaseModel:
                                         image.shape[2] // VAE_SCALE_FACTOR * VAE_SCALE_FACTOR))(image)
 
         images = torch.stack(image_list).to(device, dtype=dtype)
-        if isinstance(self.vae, AutoencoderTiny):
-            latents = self.vae.encode(images, return_dict=False)[0]
+        if getattr(torch.version, 'hip', None) is not None:
+            from torch.nn.attention import SDPBackend, sdpa_kernel
+            sdp_ctx = sdpa_kernel(SDPBackend.MATH)
         else:
-            latents = self.vae.encode(images).latent_dist.sample()
+            from contextlib import nullcontext
+            sdp_ctx = nullcontext()
+        with sdp_ctx:
+            if isinstance(self.vae, AutoencoderTiny):
+                latents = self.vae.encode(images, return_dict=False)[0]
+            else:
+                latents = self.vae.encode(images).latent_dist.sample()
         shift = self.vae.config['shift_factor'] if self.vae.config['shift_factor'] is not None else 0
 
         # flux ref https://github.com/black-forest-labs/flux/blob/c23ae247225daba30fbd56058d247cc1b1fc20a3/src/flux/modules/autoencoder.py#L303
@@ -1271,7 +1278,14 @@ class BaseModel:
         latents = latents.to(device, dtype=dtype)
         latents = (
             latents / self.vae.config['scaling_factor']) + self.vae.config['shift_factor']
-        images = self.vae.decode(latents).sample
+        if getattr(torch.version, 'hip', None) is not None:
+            from torch.nn.attention import SDPBackend, sdpa_kernel
+            sdp_ctx = sdpa_kernel(SDPBackend.MATH)
+        else:
+            from contextlib import nullcontext
+            sdp_ctx = nullcontext()
+        with sdp_ctx:
+            images = self.vae.decode(latents).sample
         images = images.to(device, dtype=dtype)
 
         return images

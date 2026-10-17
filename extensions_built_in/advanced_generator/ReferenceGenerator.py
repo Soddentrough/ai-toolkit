@@ -19,7 +19,6 @@ import torch
 from jobs.process import BaseExtensionProcess
 from toolkit.data_loader import get_dataloader_from_datasets
 from toolkit.train_tools import get_torch_dtype
-from controlnet_aux.midas import MidasDetector
 from diffusers.utils import load_image
 
 
@@ -105,6 +104,7 @@ class ReferenceGenerator(BaseExtensionProcess):
                 varient="fp16"
             ).to(device)
 
+        from controlnet_aux.midas import MidasDetector
         midas_depth = MidasDetector.from_pretrained(
             "valhalla/t2iadapter-aux-models", filename="dpt_large_384.pt", model_type="dpt_large"
         ).to(device)
