@@ -4,6 +4,14 @@ import { promisify } from 'util';
 import os from 'os';
 import { cached } from '@/server/apiCache';
 import { loadMacstats } from '@/server/macstats';
+import {
+  discoverAmdStaticGpus,
+  findAmdSmiPath,
+  findHipInfoPath,
+  getAmdSmiStats,
+  getHipStats,
+  sampleAmdSysfsGpus,
+} from '@/server/amdStats';
 
 const execAsync = promisify(exec);
 
@@ -100,6 +108,7 @@ async function getGpuInfo() {
     if (macGpu) {
       return {
         hasNvidiaSmi: false,
+        hasGpuMonitor: true,
         isMac: true,
         gpus: [
           {
@@ -125,6 +134,7 @@ async function getGpuInfo() {
     }
     return {
       hasNvidiaSmi: false,
+      hasGpuMonitor: false,
       isMac: true,
       gpus: [],
       error: 'Could not read Mac GPU stats',
@@ -134,21 +144,57 @@ async function getGpuInfo() {
   // Check if nvidia-smi is available
   const hasNvidiaSmi = await checkNvidiaSmi(isWindows);
 
-  if (!hasNvidiaSmi) {
+  if (hasNvidiaSmi) {
+    const gpuStats = await getGpuStats(isWindows);
     return {
-      hasNvidiaSmi: false,
+      hasNvidiaSmi: true,
+      hasGpuMonitor: true,
       isMac: false,
-      gpus: [],
-      error: 'nvidia-smi not found or not accessible',
+      gpus: gpuStats,
     };
   }
 
-  // Get GPU stats
-  const gpuStats = await getGpuStats(isWindows);
+  // Check for AMD GPUs (amd-smi / sysfs on Linux, hipinfo.exe on Windows)
+  if (isWindows) {
+    const hipPath = await findHipInfoPath();
+    if (hipPath) {
+      const gpus = await getHipStats(hipPath);
+      return {
+        hasNvidiaSmi: true,
+        hasGpuMonitor: true,
+        isMac: false,
+        gpus,
+      };
+    }
+  } else {
+    const amdSmiPath = await findAmdSmiPath();
+    const staticGpus = await discoverAmdStaticGpus(amdSmiPath);
+    if (amdSmiPath) {
+      const gpus = await getAmdSmiStats(amdSmiPath, staticGpus);
+      return {
+        hasNvidiaSmi: true,
+        hasGpuMonitor: true,
+        isMac: false,
+        gpus,
+      };
+    }
+    if (staticGpus.length > 0) {
+      const gpus = await sampleAmdSysfsGpus(staticGpus);
+      return {
+        hasNvidiaSmi: true,
+        hasGpuMonitor: true,
+        isMac: false,
+        gpus,
+      };
+    }
+  }
 
   return {
-    hasNvidiaSmi: true,
-    gpus: gpuStats,
+    hasNvidiaSmi: false,
+    hasGpuMonitor: false,
+    isMac: false,
+    gpus: [],
+    error: "Unable to load 'nvidia-smi' or 'amd-smi' - ensure the correct GPU monitoring tool is installed",
   };
 }
 
@@ -157,10 +203,11 @@ export async function GET() {
     const gpuInfo = await cached('gpu-info', getGpuInfo);
     return NextResponse.json(gpuInfo);
   } catch (error) {
-    console.error('Error fetching NVIDIA GPU stats:', error);
+    console.error('Error fetching GPU stats:', error);
     return NextResponse.json(
       {
         hasNvidiaSmi: false,
+        hasGpuMonitor: false,
         isMac: false,
         gpus: [],
         error: `Failed to fetch GPU stats: ${error instanceof Error ? error.message : String(error)}`,
