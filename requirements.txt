@@ -1,2 +1,1 @@
 -r requirements_base.txt
-scipy==1.12.0

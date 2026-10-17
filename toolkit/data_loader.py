@@ -783,6 +783,10 @@ def get_dataloader_from_datasets(
         # does work on the first call) and per-epoch shuffling happens in the main process
         # sampler, so workers never hold stale state.
         dataloader_kwargs['persistent_workers'] = True
+        if getattr(torch.version, 'hip', None) is not None:
+            # On ROCm/HSA, forking after HIP is initialized in the parent process
+            # corrupts HSA state in child workers and causes them to crash on exit/alloc.
+            dataloader_kwargs['multiprocessing_context'] = 'spawn'
         # spawned workers re-import the full stack at boot and would repeat every
         # import-time warning the parent already printed. Children inherit these env
         # vars; the parent is unaffected since its imports already happened.

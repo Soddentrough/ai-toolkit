@@ -26,7 +26,10 @@ import huggingface_hub
 
 try:
     from diffusers import LTX2Pipeline, LTX2ImageToVideoPipeline
-    from diffusers.pipelines.ltx2.export_utils import encode_video
+    try:
+        from diffusers.pipelines.ltx2.export_utils import encode_video
+    except ImportError:
+        from diffusers.utils import encode_video
     from transformers import (
         Gemma3ForConditionalGeneration,
         GemmaTokenizerFast,
