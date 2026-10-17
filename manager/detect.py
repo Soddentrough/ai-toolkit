@@ -65,14 +65,25 @@ def detect_rocm():
     """Returns dict if an AMD ROCm stack is present, else None."""
     if not IS_LINUX:
         return None
-    smi = which("rocm-smi")
+    smi = which("amd-smi")
     if not smi and not os.path.isdir("/opt/rocm"):
         return None
     gpus = []
-    out = _run_quiet([smi, "--showproductname"]) if smi else None
-    if out:
-        for m in re.finditer(r"Card [Ss]eries:\s*(.+)", out):
-            gpus.append({"name": m.group(1).strip()})
+    if smi:
+        out = _run_quiet([smi, "static", "--asic", "--json"])
+        if out:
+            try:
+                import json
+
+                data = json.loads(out)
+                gpu_list = data.get("gpu_data") if isinstance(data, dict) else data
+                if isinstance(gpu_list, list):
+                    for item in gpu_list:
+                        name = (item.get("asic") or {}).get("market_name")
+                        if name:
+                            gpus.append({"name": str(name).strip()})
+            except Exception:
+                pass
     return {"gpus": gpus}
 
 
