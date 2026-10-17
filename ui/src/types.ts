@@ -13,6 +13,9 @@ export interface GpuMemory {
   used: number;
   // unified memory (e.g. GB10): figures are the system RAM pool the GPU shares
   shared?: boolean;
+  gttTotal?: number;
+  gttUsed?: number;
+  gttFree?: number;
 }
 
 export interface GpuPower {
@@ -53,6 +56,7 @@ export interface CpuInfo {
 
 export interface GPUApiResponse {
   hasNvidiaSmi: boolean;
+  hasGpuMonitor?: boolean;
   isMac: boolean;
   gpus: GpuInfo[];
   error?: string;

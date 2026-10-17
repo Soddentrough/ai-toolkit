@@ -4,6 +4,15 @@ import os from 'os';
 import si from 'systeminformation';
 import { loadMacstats } from '@/server/macstats';
 import { createLoadSampler, readCpuTemperature, readMemory } from '@/server/cpuStats';
+import {
+  AmdStaticGpu,
+  discoverAmdStaticGpus,
+  findAmdSmiPath,
+  findHipInfoPath,
+  getAmdSmiStats,
+  getHipStats,
+  sampleAmdSysfsGpus,
+} from '@/server/amdStats';
 import { CpuInfo, GpuInfo, GPUApiResponse, MonitorHistoryPoint, MonitorInit, MonitorSample } from '@/types';
 import { historyPointFromSample, MONITOR_HISTORY_LENGTH, MONITOR_TICK_MS } from '@/utils/monitorSample';
 
@@ -113,7 +122,7 @@ class SystemMonitor {
   private history: MonitorHistoryPoint[] = [];
   private subscribers = new Set<Subscriber>();
   private latestCpu: CpuInfo | null = null;
-  private latestGpu: GPUApiResponse = { hasNvidiaSmi: false, isMac: this.isMac, gpus: [] };
+  private latestGpu: GPUApiResponse = { hasNvidiaSmi: false, hasGpuMonitor: false, isMac: this.isMac, gpus: [] };
   private macGpuName = 'Apple GPU';
   private nvChild: ChildProcess | null = null;
   private nvBatch: GpuInfo[] = [];
@@ -125,6 +134,12 @@ class SystemMonitor {
   private nvOneShotMode = false;
   private nvOneShotInFlight = false;
   private lastNvLineAt = 0;
+  private amdInitStarted = false;
+  private amdUnavailable = false;
+  private amdInFlight = false;
+  private amdSmiPath: string | null = null;
+  private amdStaticGpus: AmdStaticGpu[] | null = null;
+  private hipInfoPath: string | null = null;
   private tickInFlight = false;
   private lastCpuTemp = 0;
   private cpuTempInFlight = false;
@@ -190,6 +205,8 @@ class SystemMonitor {
     try {
       if (this.isMac) {
         this.latestGpu = this.sampleMacGpu();
+      } else if (this.nvUnavailable) {
+        await this.sampleAmdGpu();
       } else if (this.nvOneShotMode) {
         await this.sampleNvOneShot();
       } else {
@@ -455,6 +472,7 @@ class SystemMonitor {
     if (this.nvBatch.length === 0) return;
     this.latestGpu = {
       hasNvidiaSmi: true,
+      hasGpuMonitor: true,
       isMac: false,
       gpus: this.nvBatch.sort((a, b) => a.index - b.index),
     };
@@ -484,7 +502,7 @@ class SystemMonitor {
         .map(parseGpuLine)
         .filter((gpu): gpu is GpuInfo => gpu !== null)
         .sort((a, b) => a.index - b.index);
-      this.latestGpu = { hasNvidiaSmi: true, isMac: false, gpus };
+      this.latestGpu = { hasNvidiaSmi: true, hasGpuMonitor: true, isMac: false, gpus };
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
         this.markNvUnavailable();
@@ -498,11 +516,86 @@ class SystemMonitor {
 
   private markNvUnavailable(): void {
     this.nvUnavailable = true;
+    // Trigger AMD GPU discovery immediately instead of waiting for next tick
+    void this.sampleAmdGpu();
+  }
+
+  // -------------------------------------------------------------------------
+  // AMD GPU (amd-smi + sysfs on Linux, hipinfo.exe on Windows)
+  // -------------------------------------------------------------------------
+  private async sampleAmdGpu(): Promise<void> {
+    if (this.amdUnavailable || this.amdInFlight) return;
+    this.amdInFlight = true;
+    try {
+      if (!this.amdInitStarted) {
+        this.amdInitStarted = true;
+        if (os.platform() === 'win32') {
+          this.hipInfoPath = await findHipInfoPath();
+          if (!this.hipInfoPath) {
+            this.markNoGpuMonitor();
+            return;
+          }
+        } else {
+          this.amdSmiPath = await findAmdSmiPath();
+          this.amdStaticGpus = await discoverAmdStaticGpus(this.amdSmiPath);
+          if (!this.amdSmiPath && (!this.amdStaticGpus || this.amdStaticGpus.length === 0)) {
+            this.markNoGpuMonitor();
+            return;
+          }
+        }
+      }
+
+      if (this.hipInfoPath) {
+        const gpus = await getHipStats(this.hipInfoPath);
+        this.latestGpu = {
+          hasNvidiaSmi: true,
+          hasGpuMonitor: true,
+          isMac: false,
+          gpus,
+        };
+        return;
+      }
+
+      if (this.amdStaticGpus && this.amdStaticGpus.length > 0) {
+        // Use zero-fork sysfs sampling when sysfs paths are available for all GPUs
+        if (this.amdStaticGpus.every(g => g.sysfsDevicePath !== null)) {
+          const gpus = await sampleAmdSysfsGpus(this.amdStaticGpus);
+          this.latestGpu = {
+            hasNvidiaSmi: true,
+            hasGpuMonitor: true,
+            isMac: false,
+            gpus,
+          };
+          return;
+        }
+        if (this.amdSmiPath) {
+          const gpus = await getAmdSmiStats(this.amdSmiPath, this.amdStaticGpus);
+          this.latestGpu = {
+            hasNvidiaSmi: true,
+            hasGpuMonitor: true,
+            isMac: false,
+            gpus,
+          };
+          return;
+        }
+      }
+
+      this.markNoGpuMonitor();
+    } catch (err) {
+      console.error('Monitor: AMD GPU sample failed:', err);
+    } finally {
+      this.amdInFlight = false;
+    }
+  }
+
+  private markNoGpuMonitor(): void {
+    this.amdUnavailable = true;
     this.latestGpu = {
       hasNvidiaSmi: false,
+      hasGpuMonitor: false,
       isMac: false,
       gpus: [],
-      error: 'nvidia-smi not found or not accessible',
+      error: "Unable to load 'nvidia-smi' or 'amd-smi' - ensure the correct GPU monitoring tool is installed",
     };
   }
 }
