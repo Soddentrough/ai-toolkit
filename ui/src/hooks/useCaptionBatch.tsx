@@ -6,10 +6,13 @@ import { apiClient } from '@/utils/api';
 // instead of N HTTP requests, queue paths and flush them as a single batch.
 // Entries are keyed by extension + path so different caption extensions don't
 // collide in the cache or the pending batch.
-type Resolver = { resolve: (caption: string) => void; reject: (err: unknown) => void };
+export type DatasetItemMeta = { width?: number; height?: number; size?: number };
+
+type Resolver = { resolve: (res: { caption: string; meta?: DatasetItemMeta }) => void; reject: (err: unknown) => void };
 type Pending = { path: string; ext: string; resolvers: Resolver[] };
 const pending = new Map<string, Pending>();
 const cache = new Map<string, string>();
+const metaCache = new Map<string, DatasetItemMeta>();
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 const FLUSH_DELAY_MS = 30;
 const MAX_BATCH = 200;
@@ -54,10 +57,13 @@ async function flush() {
       try {
         const res = await apiClient.post('/api/caption/getBatch', { imgPaths: paths, ext });
         const captions: Record<string, string> = res.data?.captions ?? {};
+        const metas: Record<string, DatasetItemMeta> = res.data?.meta ?? {};
         for (const { path, ext: e, resolvers } of entries) {
           const value = captions[path] ?? '';
+          const itemMeta = metas[path];
           cache.set(keyFor(path, e), value);
-          for (const r of resolvers) r.resolve(value);
+          if (itemMeta) metaCache.set(path, itemMeta);
+          for (const r of resolvers) r.resolve({ caption: value, meta: itemMeta });
         }
       } catch (err) {
         for (const { resolvers } of entries) {
@@ -70,7 +76,7 @@ async function flush() {
   if (pending.size > 0) scheduleFlush();
 }
 
-function requestCaption(path: string, ext: string, signal?: AbortSignal): Promise<string> {
+function requestCaption(path: string, ext: string, signal?: AbortSignal): Promise<{ caption: string; meta?: DatasetItemMeta }> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
       reject(new DOMException('Aborted', 'AbortError'));
@@ -116,12 +122,14 @@ export function setCachedCaption(path: string, caption: string, ext?: string) {
 export default function useCaptionBatch(imgPath: string | null, refreshKey: number = 0, ext: string = 'txt') {
   const captionExt = normExt(ext);
   const [caption, setCaption] = useState<string>(() => (imgPath ? (cache.get(keyFor(imgPath, captionExt)) ?? '') : ''));
+  const [meta, setMeta] = useState<DatasetItemMeta | undefined>(() => (imgPath ? metaCache.get(imgPath) : undefined));
   const [isLoaded, setIsLoaded] = useState<boolean>(() => Boolean(imgPath && cache.has(keyFor(imgPath, captionExt))));
   const lastPathRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!imgPath) {
       setCaption('');
+      setMeta(undefined);
       setIsLoaded(false);
       return;
     }
@@ -131,6 +139,7 @@ export default function useCaptionBatch(imgPath: string | null, refreshKey: numb
     const cached = cache.get(keyFor(imgPath, captionExt));
     if (cached !== undefined) {
       setCaption(cached);
+      setMeta(metaCache.get(imgPath));
       setIsLoaded(true);
       lastPathRef.current = imgPath;
       return;
@@ -141,9 +150,10 @@ export default function useCaptionBatch(imgPath: string | null, refreshKey: numb
     lastPathRef.current = imgPath;
     setIsLoaded(false);
     requestCaption(imgPath, captionExt, controller.signal)
-      .then(value => {
+      .then(({ caption: value, meta: itemMeta }) => {
         if (cancelled || lastPathRef.current !== imgPath) return;
         setCaption(value);
+        setMeta(itemMeta);
         setIsLoaded(true);
       })
       .catch(err => {
@@ -158,5 +168,5 @@ export default function useCaptionBatch(imgPath: string | null, refreshKey: numb
     };
   }, [imgPath, refreshKey, captionExt]);
 
-  return { caption, isLoaded, setCaption };
+  return { caption, meta, isLoaded, setCaption };
 }
