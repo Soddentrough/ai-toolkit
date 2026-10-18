@@ -120,11 +120,27 @@ const DatasetImageCard: React.FC<DatasetImageCardProps> = ({
   }, [imageUrl, isItAudio, isVisible]);
 
   const combinedRefreshKey = captionRefreshKey + pollTick;
-  const { caption: fetchedCaption, isLoaded: isCaptionLoaded } = useCaptionBatch(
+  const { caption: fetchedCaption, meta: itemMeta, isLoaded: isCaptionLoaded } = useCaptionBatch(
     isVisible ? imageUrl : null,
     combinedRefreshKey,
     captionExt,
   );
+
+  const fileName = imageUrl.replace(/^.*[\\/]/, '');
+  const formatBytes = (bytes?: number) => {
+    if (bytes === undefined || bytes < 0) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+  const metaParts: string[] = [];
+  if (itemMeta?.width && itemMeta?.height) {
+    metaParts.push(`${itemMeta.width}×${itemMeta.height}`);
+  }
+  if (itemMeta?.size !== undefined) {
+    metaParts.push(formatBytes(itemMeta.size));
+  }
+  const metaText = metaParts.join(' · ');
 
   const [caption, setCaption] = useState<string>('');
   const [savedCaption, setSavedCaption] = useState<string>('');
@@ -247,7 +263,7 @@ const DatasetImageCard: React.FC<DatasetImageCardProps> = ({
                 <FaMusic className="w-1/3 h-1/3 text-gray-600" />
               )}
               <div className="absolute top-0 left-0 right-0 bg-gray-900/70 px-3 py-2 pr-12 text-base font-medium text-white truncate pointer-events-none">
-                {imageUrl.replace(/^.*[\\/]/, '')}
+                {fileName}
               </div>
               <div className="absolute bottom-2 left-2 bg-gray-900/70 rounded-full p-2 pointer-events-none">
                 <FaPlay className="w-3 h-3 text-white" />
@@ -299,33 +315,46 @@ const DatasetImageCard: React.FC<DatasetImageCardProps> = ({
         </div>
       </div>
       <div
-        className={classNames('w-full p-2 bg-gray-800 text-white text-sm rounded-b-lg h-[75px]', {
+        className={classNames('w-full bg-gray-800 text-white text-sm rounded-b-lg flex flex-col', {
           'border-blue-500 border-2': !isCaptionCurrent,
           'border-transparent border-2': isCaptionCurrent,
         })}
       >
-        {isCaptionLoaded || hasLoadedCaptionRef.current ? (
-          <form
-            onSubmit={e => {
-              e.preventDefault();
-              saveCaption();
-            }}
-            onBlur={saveCaption}
-          >
-            <textarea
-              className={classNames('w-full bg-transparent resize-none outline-none focus:ring-0 focus:outline-none', {
-                'opacity-50 cursor-not-allowed': isAutoCaptioning,
-              })}
-              value={caption}
-              rows={3}
-              readOnly={isAutoCaptioning}
-              onChange={e => handleCaptionChange(e.target.value)}
-              onKeyDown={handleKeyDown}
-            />
-          </form>
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-gray-400">Loading caption...</div>
-        )}
+        <div
+          className="flex items-center justify-between gap-2 px-2 py-1 bg-gray-900/60 border-b border-gray-700/60 text-xs text-gray-300"
+          title={fileName}
+        >
+          <span className="font-mono truncate">{fileName}</span>
+          {metaText && <span className="text-gray-400 whitespace-nowrap flex-shrink-0">{metaText}</span>}
+        </div>
+        <div className="p-2 h-[72px]">
+          {isCaptionLoaded || hasLoadedCaptionRef.current ? (
+            <form
+              onSubmit={e => {
+                e.preventDefault();
+                saveCaption();
+              }}
+              onBlur={saveCaption}
+            >
+              <textarea
+                className={classNames(
+                  'w-full bg-transparent resize-none outline-none focus:ring-0 focus:outline-none placeholder-gray-500',
+                  {
+                    'opacity-50 cursor-not-allowed': isAutoCaptioning,
+                  },
+                )}
+                placeholder="Add custom caption (or leave blank for default)..."
+                value={caption}
+                rows={3}
+                readOnly={isAutoCaptioning}
+                onChange={e => handleCaptionChange(e.target.value)}
+                onKeyDown={handleKeyDown}
+              />
+            </form>
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-gray-400">Loading caption...</div>
+          )}
+        </div>
       </div>
     </div>
   );

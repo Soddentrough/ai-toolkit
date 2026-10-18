@@ -29,7 +29,7 @@ export default function useJobLog(jobID: string, reloadInterval: null | number =
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error' | 'refreshing'>('idle');
 
   const refresh = () => {
-    if (inFlightRef.current) {
+    if (!jobID || inFlightRef.current) {
       return;
     }
     inFlightRef.current = true;
