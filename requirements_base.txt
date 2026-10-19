@@ -3,7 +3,7 @@ albumentations
 av
 bitsandbytes
 controlnet_aux
-diffusers
+diffusers>=0.41
 einops
 fastapi
 huggingface_hub
