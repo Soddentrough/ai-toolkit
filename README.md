@@ -1,5 +1,7 @@
 # Ostris AI Toolkit
 
+> **Fork Note:** This repository ([Soddentrough/ai-toolkit](https://github.com/Soddentrough/ai-toolkit)) is a fork of [ostris/ai-toolkit](https://github.com/ostris/ai-toolkit) with vendor-agnostic GPU support (including AMD ROCm and unified-memory architectures alongside NVIDIA CUDA and Apple Silicon).
+
 AI Toolkit is an easy to use all in one training suite for diffusion models. I try to support all the latest models on consumer grade hardware. Image and video models. It can be run as a GUI or CLI. It is designed to be easy to use but still have every feature imaginable. Free and open source.
 
 
@@ -67,7 +69,7 @@ AI Toolkit is an easy to use all in one training suite for diffusion models. I t
 - [Lightricks/LTX-2](https://huggingface.co/Lightricks/LTX-2) (LTX-2)
 - [Lightricks/LTX-2.3](https://huggingface.co/Lightricks/LTX-2.3) (LTX-2.3)
 - [Lightricks/LTX-2.5](https://huggingface.co/Lightricks/LTX-2.5) (LTX-2.5)
-- [MiniMaxAI/MiniMax-H3](https://huggingface.co/MiniMaxAI/MiniMax-H3) (MiniMaxAI/MiniMax-H3)
+- [MiniMaxAI/MiniMax-H3](https://huggingface.co/MiniMaxAI/MiniMax-H3) (MiniMax-H3)
 - [MiniMaxAI/MiniMax-H3](https://huggingface.co/MiniMaxAI/MiniMax-H3) (MiniMax-H3 Ref2V) - reference image to video
 
 ### Audio
@@ -86,13 +88,13 @@ AI Toolkit is an easy to use all in one training suite for diffusion models. I t
 ### Install with the AI Toolkit Manager (experimental)
 
 The recommended way to install and run AI Toolkit is with the **AI Toolkit
-Manager**, built into this repo. The manager detects your hardware and sets up
-the right PyTorch build, creates the python environment, and grabs local copies
-of Node.js and FFmpeg — everything stays inside the ai-toolkit folder, nothing
-is installed system-wide. On every launch the manager checks for updates and
-applies them (your local changes are never overwritten — if you have modified
-files, the update is skipped with a warning), then starts the UI at
-`http://localhost:8675`.
+Manager**, built into this repo. The manager detects your hardware (NVIDIA CUDA,
+AMD ROCm, or Apple Silicon) and sets up the right PyTorch build, creates the
+python environment, and grabs local copies of Node.js and FFmpeg — everything
+stays inside the ai-toolkit folder, nothing is installed system-wide. On every
+launch the manager checks for updates and applies them (your local changes are
+never overwritten — if you have modified files, the update is skipped with a
+warning), then starts the UI at `http://localhost:8675`.
 
 The manager is still **experimental** — please let me know if you have any
 issues with it. The manual instructions below still work if you prefer them
@@ -102,13 +104,14 @@ The only requirement is **git** (on Windows the manager can even fetch a
 portable git for updates, but you need one installed to clone the repo first).
 
 ```bash
-git clone https://github.com/ostris/ai-toolkit.git
+git clone https://github.com/Soddentrough/ai-toolkit.git
+# (or upstream: git clone https://github.com/ostris/ai-toolkit.git)
 cd ai-toolkit
 ```
 
 Then start the manager with the script for your platform:
 
-Linux (x86_64 and ARM64, including DGX Spark / DGX OS):
+Linux (x86_64 and ARM64, including AMD ROCm and NVIDIA DGX Spark / DGX OS):
 ```bash
 chmod +x run_linux.sh
 ./run_linux.sh
@@ -136,23 +139,26 @@ python3 -m manager doctor    # diagnose problems
 
 Requirements:
 - python >=3.10 (3.12 recommended)
-- Nvidia GPU with enough ram to do what you need
+- Supported GPU with enough VRAM / unified memory for your model (NVIDIA CUDA, AMD ROCm, or Apple Silicon)
 - python venv
 - git
 
 
 Linux:
 ```bash
-git clone https://github.com/ostris/ai-toolkit.git
+git clone https://github.com/Soddentrough/ai-toolkit.git
+# (or upstream: git clone https://github.com/ostris/ai-toolkit.git)
 cd ai-toolkit
 python3 -m venv venv
 source venv/bin/activate
-# install torch first
+# Install PyTorch first for your GPU backend:
+# NVIDIA CUDA (x86_64 and ARM64 Linux, including DGX Spark / DGX OS):
 pip3 install --no-cache-dir torch==2.13.0 torchvision==0.28.0 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cu130
+# OR AMD ROCm (ROCm 7.1+):
+pip3 install --no-cache-dir torch==2.13.0 torchvision==0.28.0 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/rocm7.1
+
 pip3 install -r requirements.txt
 ```
-
-These steps also work on ARM64 Linux, including DGX Spark / DGX OS.
 
 
 Windows:
@@ -160,7 +166,8 @@ Windows:
 If you are having issues with Windows. I recommend using the easy install script at [https://github.com/Tavris1/AI-Toolkit-Easy-Install](https://github.com/Tavris1/AI-Toolkit-Easy-Install)
 
 ```bash
-git clone https://github.com/ostris/ai-toolkit.git
+git clone https://github.com/Soddentrough/ai-toolkit.git
+# (or upstream: git clone https://github.com/ostris/ai-toolkit.git)
 cd ai-toolkit
 python -m venv venv
 .\venv\Scripts\activate
@@ -216,7 +223,7 @@ A folder with the name and the training folder from the config file will be crea
 checkpoints and images in it. You can stop the training at any time using ctrl+c and when you resume, it will pick back up
 from the last checkpoint.
 
-IMPORTANT. If you press crtl+c while it is saving, it will likely corrupt that checkpoint. So wait until it is done saving
+IMPORTANT. If you press ctrl+c while it is saving, it will likely corrupt that checkpoint. So wait until it is done saving
 
 ### Need help?
 
@@ -244,9 +251,9 @@ I have also created a short video showing how to get started using AI Toolkit wi
 ### 1. Setup
 #### ai-toolkit:
 ```
-git clone https://github.com/ostris/ai-toolkit.git
+git clone https://github.com/Soddentrough/ai-toolkit.git
+# (or upstream: git clone https://github.com/ostris/ai-toolkit.git)
 cd ai-toolkit
-git submodule update --init --recursive
 python -m venv venv
 source venv/bin/activate
 pip install torch
@@ -288,14 +295,13 @@ pip install --upgrade accelerate transformers diffusers huggingface_hub #Optiona
 
 ### Screenshot from Modal
 
-<img width="1728" alt="Modal Traning Screenshot" src="https://github.com/user-attachments/assets/7497eb38-0090-49d6-8ad9-9c8ea7b5388b">
+<img width="1728" alt="Modal Training Screenshot" src="https://github.com/user-attachments/assets/7497eb38-0090-49d6-8ad9-9c8ea7b5388b">
 
 ---
 
 ## Dataset Preparation
 
-Datasets generally need to be a folder containing images and associated text files. Currently, the only supported
-formats are jpg, jpeg, and png. Webp currently has issues. The text files should be named the same as the images
+Datasets generally need to be a folder containing media files and associated text files. Supported image formats are `.jpg`, `.jpeg`, `.png`, and `.webp` (video and audio models also support standard video/audio formats such as `.mp4`, `.mov`, `.webm`, `.mp3`, `.wav`, and `.flac`). The text files should be named the same as the media files
 but with a `.txt` extension. For example `image2.jpg` and `image2.txt`. The text file should contain only the caption.
 You can add the word `[trigger]` in the caption file and if you have `trigger_word` in your config, it will be automatically
 replaced. 
@@ -349,7 +355,7 @@ You can also exclude layers by their names by using `ignore_if_contains` network
 ```
 
 `ignore_if_contains` takes priority over `only_if_contains`. So if a weight is covered by both,
-if will be ignored.
+it will be ignored.
 
 ## LoKr Training
 
