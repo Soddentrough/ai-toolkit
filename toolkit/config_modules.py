@@ -8,7 +8,6 @@ import torchaudio
 
 from toolkit.audio.album_artwork import add_album_artwork
 from toolkit.prompt_utils import PromptEmbeds
-from torchao.quantization.quant_primitives import _DTYPE_TO_BIT_WIDTH
 
 ImgExt = Literal['jpg', 'png', 'webp']
 
@@ -723,15 +722,16 @@ class ModelConfig:
         if self.layer_offloading and self.qtype_te == "qfloat8":
             self.qtype_te = "float8"
             
-        # MPS has no fp8 dtype, so qfloat8 has to become an 8 bit integer format.
-        # convrot8, not torchao int8: measured on an M3 against bf16, convrot8
-        # trains at 0.79x and holds 1.04 GB of resident weight where torchao int8
-        # trains at 0.52x and holds 1.21 GB, and convrot8 quantizes in 19ms
-        # against 2.8s. See scripts/test_quantizations.py --device mps.
-        if torch.backends.mps.is_available() and self.qtype == "qfloat8":
-            self.qtype = "convrot8"
-        if torch.backends.mps.is_available() and self.qtype_te == "qfloat8":
-            self.qtype_te = "convrot8"
+        # When the current accelerator lacks native fp8 / qfloat8 support (e.g.
+        # MPS or devices without fp8 kernels), remap qfloat8 to convrot8.
+        if self.qtype == "qfloat8" or self.qtype_te == "qfloat8":
+            from toolkit.util.quantize import is_qfloat8_supported
+
+            if not is_qfloat8_supported():
+                if self.qtype == "qfloat8":
+                    self.qtype = "convrot8"
+                if self.qtype_te == "qfloat8":
+                    self.qtype_te = "convrot8"
         
         # 0 is off and 1.0 is 100% of the layers
         self.layer_offloading_transformer_percent = kwargs.get("layer_offloading_transformer_percent", 1.0)

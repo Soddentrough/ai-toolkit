@@ -16,12 +16,20 @@ import path from 'path';
 import { TopBar, MainContent } from '@/components/layout';
 import { Button } from '@headlessui/react';
 import { FaChevronLeft } from 'react-icons/fa';
+import { Bookmark, Save, Trash2, Upload } from 'lucide-react';
 import SimpleJob from './SimpleJob';
 import AdvancedConfigEditor from '@/components/AdvancedConfigEditor';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { apiClient } from '@/utils/api';
 
-const isDev = process.env.NODE_ENV === 'development';
+interface JobPreset {
+  id: string;
+  name: string;
+  description?: string;
+  builtIn?: boolean;
+  config: JobConfig;
+  updatedAt?: string;
+}
 
 export default function TrainingForm() {
   const router = useRouter();
@@ -38,6 +46,108 @@ export default function TrainingForm() {
   const [jobConfig, setJobConfig] = useNestedState<JobConfig>(objectCopy(migrateJobConfig(defaultJobConfig)));
   const [status, setStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Presets state
+  const [presets, setPresets] = useState<JobPreset[]>([]);
+  const [selectedPresetId, setSelectedPresetId] = useState<string>('');
+  const [showSavePresetModal, setShowSavePresetModal] = useState(false);
+  const [presetNameInput, setPresetNameInput] = useState('');
+  const [presetDescInput, setPresetDescInput] = useState('');
+  const [presetSaving, setPresetSaving] = useState(false);
+
+  // Load presets on mount
+  useEffect(() => {
+    apiClient
+      .get('/api/jobs/presets')
+      .then(res => {
+        if (res.data?.presets) {
+          setPresets(res.data.presets);
+        }
+      })
+      .catch(err => console.error('Failed to load presets:', err));
+  }, []);
+
+  const applyPreset = (presetId: string) => {
+    setSelectedPresetId(presetId);
+    const preset = presets.find(p => p.id === presetId);
+    if (!preset) return;
+
+    const currentName = jobConfig.config.name;
+    const currentTrigger = jobConfig.config.process[0].trigger_word;
+    const currentDatasets = objectCopy(jobConfig.config.process[0].datasets);
+
+    const nextConfig = migrateJobConfig(objectCopy(preset.config));
+    // Preserve current paths and user's job name / trigger / dataset folder if they already set one
+    if (isSettingsLoaded && settings.TRAINING_FOLDER) {
+      nextConfig.config.process[0].training_folder = settings.TRAINING_FOLDER;
+    }
+    nextConfig.config.process[0].sqlite_db_path = './aitk_db.db';
+    if (currentName && currentName !== 'my_first_lora_v1') {
+      nextConfig.config.name = currentName;
+    }
+    if (currentTrigger) {
+      nextConfig.config.process[0].trigger_word = currentTrigger;
+    }
+    if (
+      currentDatasets.length > 0 &&
+      currentDatasets[0].folder_path &&
+      currentDatasets[0].folder_path !== defaultDatasetConfig.folder_path &&
+      nextConfig.config.process[0].datasets.length > 0
+    ) {
+      nextConfig.config.process[0].datasets[0].folder_path = currentDatasets[0].folder_path;
+    }
+
+    setJobConfig(nextConfig);
+  };
+
+  const handleOpenSavePreset = () => {
+    const existing = presets.find(p => p.id === selectedPresetId && !p.builtIn);
+    setPresetNameInput(existing ? existing.name : jobConfig.config.name || '');
+    setPresetDescInput(existing?.description || '');
+    setShowSavePresetModal(true);
+  };
+
+  const handleSavePreset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!presetNameInput.trim() || presetSaving) return;
+    setPresetSaving(true);
+    try {
+      const res = await apiClient.post('/api/jobs/presets', {
+        name: presetNameInput.trim(),
+        description: presetDescInput.trim(),
+        config: jobConfig,
+      });
+      if (res.data?.presets) {
+        setPresets(res.data.presets);
+      }
+      if (res.data?.preset?.id) {
+        setSelectedPresetId(res.data.preset.id);
+      }
+      setShowSavePresetModal(false);
+    } catch (err) {
+      console.error('Failed to save preset:', err);
+      alert('Failed to save preset.');
+    } finally {
+      setPresetSaving(false);
+    }
+  };
+
+  const handleDeletePreset = async () => {
+    const selected = presets.find(p => p.id === selectedPresetId);
+    if (!selected || selected.builtIn) return;
+    if (!confirm(`Delete preset "${selected.name}"?`)) return;
+
+    try {
+      const res = await apiClient.delete(`/api/jobs/presets?id=${encodeURIComponent(selected.id)}`);
+      if (res.data?.presets) {
+        setPresets(res.data.presets);
+      }
+      setSelectedPresetId('');
+    } catch (err) {
+      console.error('Failed to delete preset:', err);
+      alert('Failed to delete preset.');
+    }
+  };
 
   const handleImportConfig = () => {
     fileInputRef.current?.click();
@@ -58,7 +168,6 @@ export default function TrainingForm() {
           parsed = YAML.parse(text);
         }
 
-        // Set required fields (same pattern as AdvancedJob.handleChange)
         try {
           parsed.config.process[0].sqlite_db_path = './aitk_db.db';
           parsed.config.process[0].training_folder = settings.TRAINING_FOLDER;
@@ -90,7 +199,6 @@ export default function TrainingForm() {
 
     if (datasetOptions.length > 0) {
       const defaultDatasetPath = defaultDatasetConfig.folder_path;
-      // Use functional updater so we check the *current* state, not a stale closure
       setJobConfig((prev: JobConfig) => {
         let updated = prev;
         for (let i = 0; i < prev.config.process[0].datasets.length; i++) {
@@ -187,6 +295,8 @@ export default function TrainingForm() {
     saveJob();
   };
 
+  const selectedPreset = presets.find(p => p.id === selectedPresetId);
+
   return (
     <>
       <TopBar>
@@ -201,31 +311,86 @@ export default function TrainingForm() {
           </h1>
         </div>
         <div className="flex-1"></div>
+
+        {/* Presets Selector & Controls */}
+        <div className="hidden md:flex items-center gap-1.5">
+          <Bookmark className="w-4 h-4 text-blue-400 mr-0.5" />
+          <select
+            value={selectedPresetId}
+            onChange={e => applyPreset(e.target.value)}
+            className="text-xs sm:text-sm bg-gray-900 border border-gray-700 rounded-md px-2.5 py-1 text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500 max-w-[230px]"
+            title={selectedPreset?.description || 'Load a saved or built-in preset configuration'}
+          >
+            <option value="">Load Preset...</option>
+            {presets.some(p => !p.builtIn) && (
+              <optgroup label="Saved Presets">
+                {presets
+                  .filter(p => !p.builtIn)
+                  .map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+              </optgroup>
+            )}
+            <optgroup label="Built-in Presets">
+              {presets
+                .filter(p => p.builtIn)
+                .map(p => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+            </optgroup>
+          </select>
+          <Button
+            className="text-gray-200 bg-gray-800 hover:bg-gray-700 border border-gray-700 px-2.5 py-1 rounded-md text-xs flex items-center gap-1 transition-colors"
+            onClick={handleOpenSavePreset}
+            title="Save current configuration as a reusable preset"
+          >
+            <Save className="w-3.5 h-3.5 text-blue-400" />
+            <span>Save Preset</span>
+          </Button>
+          {selectedPreset && !selectedPreset.builtIn && (
+            <Button
+              className="text-red-300 bg-gray-800 hover:bg-red-900/50 border border-gray-700 p-1.5 rounded-md text-xs transition-colors"
+              onClick={handleDeletePreset}
+              title={`Delete preset "${selectedPreset.name}"`}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </Button>
+          )}
+        </div>
+        <div className="hidden md:block mx-3 bg-gray-200 dark:bg-gray-800 w-0.5 h-6"></div>
+
+        <div className="hidden lg:block mr-2">
+          <Button
+            className="text-gray-300 bg-gray-800 hover:bg-gray-700 border border-gray-700 px-2.5 py-1 rounded-md text-xs flex items-center gap-1 transition-colors"
+            onClick={handleImportConfig}
+            title="Import a YAML or JSON config file from disk"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            <span>Import</span>
+          </Button>
+        </div>
+
         {showAdvancedView && (
           <>
-            <div className="hidden sm:block">
+            <div className="hidden sm:block mr-2">
               <SelectInput
                 value={`${gpuIDs}`}
                 onChange={value => setGpuIDs(value)}
                 options={gpuList.map((gpu: any) => ({ value: `${gpu.index}`, label: `GPU #${gpu.index}` }))}
               />
             </div>
-            <div className="hidden sm:block mx-4 bg-gray-200 dark:bg-gray-800 w-1 h-6"></div>
-            <div className="hidden md:block">
-              <Button className="text-gray-200 bg-gray-800 px-3 py-1 rounded-md" onClick={handleImportConfig}>
-                Import Config
-              </Button>
-            </div>
-            <div className="hidden md:block mx-4 bg-gray-200 dark:bg-gray-800 w-1 h-6"></div>
           </>
         )}
         {!showAdvancedView && (
           <>
-            <div className="hidden sm:block">
+            <div className="hidden sm:block mr-2">
               <SelectInput
                 value={`${jobConfig?.config.process[0].type}`}
                 onChange={value => {
-                  // undo current job type changes
                   const currentOption = jobTypeOptions.find(
                     option => option.value === jobConfig?.config.process[0].type,
                   );
@@ -248,22 +413,21 @@ export default function TrainingForm() {
                 options={jobTypeOptions}
               />
             </div>
-            <div className="hidden sm:block mx-4 bg-gray-200 dark:bg-gray-800 w-1 h-6"></div>
           </>
         )}
 
         <div className="pr-1 sm:pr-2 flex-shrink-0">
           <Button
-            className="text-gray-200 bg-gray-800 px-2 sm:px-3 py-1 rounded-md text-xs sm:text-base"
+            className="text-gray-200 bg-gray-800 hover:bg-gray-700 px-2 sm:px-3 py-1 rounded-md text-xs sm:text-sm"
             onClick={() => setShowAdvancedView(!showAdvancedView)}
           >
-            <span className="sm:hidden">{showAdvancedView ? 'Simple' : 'Advanced'}</span>
-            <span className="hidden sm:inline">{showAdvancedView ? 'Show Simple' : 'Show Advanced'}</span>
+            <span className="sm:hidden">{showAdvancedView ? 'Simple' : 'YAML'}</span>
+            <span className="hidden sm:inline">{showAdvancedView ? 'Simple Form' : 'YAML Editor'}</span>
           </Button>
         </div>
         <div className="flex-shrink-0">
           <Button
-            className="text-white bg-green-600 hover:bg-green-700 px-2 sm:px-3 py-1 rounded-md text-xs sm:text-base"
+            className="text-white bg-green-600 hover:bg-green-700 px-2 sm:px-3 py-1 rounded-md text-xs sm:text-sm font-medium"
             onClick={() => saveJob()}
             disabled={status === 'saving'}
           >
@@ -278,6 +442,61 @@ export default function TrainingForm() {
           </Button>
         </div>
       </TopBar>
+
+      {/* Save Preset Modal */}
+      {showSavePresetModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-lg max-w-md w-full p-5 shadow-xl">
+            <h3 className="text-base font-semibold text-gray-100 mb-1 flex items-center gap-2">
+              <Bookmark className="w-4 h-4 text-blue-400" />
+              Save Job Preset
+            </h3>
+            <p className="text-xs text-gray-400 mb-4">
+              Save your current model, quantization, training, dataset, and sample settings as a reusable preset.
+            </p>
+            <form onSubmit={handleSavePreset} className="space-y-3">
+              <div>
+                <label className="block text-xs text-gray-300 mb-1">Preset Name</label>
+                <input
+                  type="text"
+                  value={presetNameInput}
+                  onChange={e => setPresetNameInput(e.target.value)}
+                  placeholder="e.g. My Z-Image De-Turbo Character LoRA"
+                  className="w-full text-sm px-3 py-1.5 bg-gray-950 border border-gray-700 rounded text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                  required
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-300 mb-1">Description (optional)</label>
+                <input
+                  type="text"
+                  value={presetDescInput}
+                  onChange={e => setPresetDescInput(e.target.value)}
+                  placeholder="e.g. BF16 unquantized, 2000 steps, rank 32"
+                  className="w-full text-sm px-3 py-1.5 bg-gray-950 border border-gray-700 rounded text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSavePresetModal(false)}
+                  className="px-3 py-1.5 text-xs rounded bg-gray-800 hover:bg-gray-700 text-gray-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={presetSaving || !presetNameInput.trim()}
+                  className="px-4 py-1.5 text-xs font-medium rounded bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50"
+                >
+                  {presetSaving ? 'Saving...' : 'Save Preset'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <input
         ref={fileInputRef}
@@ -310,7 +529,7 @@ export default function TrainingForm() {
           <ErrorBoundary
             fallback={
               <div className="flex items-center justify-center h-64 text-lg text-red-600 font-medium bg-red-100 dark:bg-red-900/20 dark:text-red-400 border border-red-300 dark:border-red-700 rounded-lg">
-                Advanced job detected. Please switch to advanced view to continue.
+                Advanced job detected. Please switch to YAML editor to continue.
               </div>
             }
           >

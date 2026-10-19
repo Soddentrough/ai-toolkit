@@ -215,13 +215,22 @@ _e4m3_triton_ok_cache = {}
 
 
 def _e4m3_triton_ok(device) -> bool:
-    """Whether triton can compile kernels that touch fp8e4nv (e4m3) on this
-    device — sm_89+ (Ada and newer). Older architectures raise a
-    CompilationError at kernel-build time, so they must take the torch path."""
-    key = str(device)
+    """Whether triton can compile and run kernels that touch float8_e4m3fn on
+    this device. Probed once per device via a tiny test launch so no vendor or
+    compute-capability version assumptions are needed."""
+    key = str(torch.device(device))
     if key not in _e4m3_triton_ok_cache:
         try:
-            _e4m3_triton_ok_cache[key] = torch.cuda.get_device_capability(device) >= (8, 9)
+            if not _triton_available():
+                _e4m3_triton_ok_cache[key] = False
+            else:
+                packed = torch.zeros((1, 8), dtype=torch.uint8, device=device)
+                scales = torch.zeros((1, 1), dtype=torch.uint8, device=device)
+                pts = torch.ones((1,), dtype=torch.float32, device=device).view(
+                    torch.uint8
+                )
+                _fp4_dequant_op(packed, scales, pts, "bfloat16")
+                _e4m3_triton_ok_cache[key] = True
         except Exception:
             _e4m3_triton_ok_cache[key] = False
     return _e4m3_triton_ok_cache[key]
@@ -560,25 +569,44 @@ def _fp4_dequant_fake(packed, scales_u8, pts_u8, out_dtype):
 # ---------------- backend ----------------
 
 
+_fp4_mm_ok_cache = {}
 _warned_no_fp4 = False
 
 
 def _fp4_gemm_supported(device) -> bool:
     global _warned_no_fp4
     device = torch.device(device)
-    supported = (
-        device.type == "cuda"
-        and torch.cuda.is_available()
-        and torch.cuda.get_device_capability(device)[0] >= 10  # Blackwell
-    )
+    key = str(device)
+    if device.type != "cuda" or not torch.cuda.is_available():
+        supported = False
+    else:
+        if key not in _fp4_mm_ok_cache:
+            try:
+                f4_dtype = getattr(torch, "float4_e2m1fn_x2", None)
+                if f4_dtype is None:
+                    _fp4_mm_ok_cache[key] = False
+                else:
+                    a = torch.zeros((16, 16), dtype=torch.uint8, device=device).view(
+                        f4_dtype
+                    )
+                    b = torch.zeros((16, 16), dtype=torch.uint8, device=device).view(
+                        f4_dtype
+                    )
+                    s_a = torch.ones((128 * 4,), dtype=torch.float8_e4m3fn, device=device)
+                    s_b = torch.ones((128 * 4,), dtype=torch.float8_e4m3fn, device=device)
+                    torch._scaled_mm(a, b.t(), s_a, s_b, out_dtype=torch.bfloat16)
+                    _fp4_mm_ok_cache[key] = True
+            except Exception:
+                _fp4_mm_ok_cache[key] = False
+        supported = _fp4_mm_ok_cache[key]
     if not supported and not _warned_no_fp4:
         _warned_no_fp4 = True
         print_acc(
-            f"ConvRot: no fp4 tensor-core support on this device ({device}; needs an "
-            "NVIDIA Blackwell GPU, sm_100+). Inference falls back to dequantized bf16 "
-            "matmuls: correct output but NO speedup, and inference activations stay "
-            "unquantized (W4A16 numerics instead of W4A4). The training path is "
-            "unaffected (it always simulates W4A4 via fake-quant)."
+            f"ConvRot: no hardware fp4 scaled matmul support on this device ({device}). "
+            "Inference falls back to dequantized bf16 matmuls: correct output but NO "
+            "speedup, and inference activations stay unquantized (W4A16 numerics instead "
+            "of W4A4). The training path is unaffected (it always simulates W4A4 via "
+            "fake-quant)."
         )
     return supported
 

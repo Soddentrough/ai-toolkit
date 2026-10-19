@@ -76,6 +76,39 @@ def get_qtype(qtype: Union[str, qtype]) -> qtype:
         return qtype
 
 
+_qfloat8_supported_cache: Optional[bool] = None
+
+
+def is_qfloat8_supported() -> bool:
+    """Vendor-agnostic runtime probe for whether optimum.quanto's qfloat8 has
+    working native kernels on the current accelerator. Cached after first call."""
+    global _qfloat8_supported_cache
+    if _qfloat8_supported_cache is not None:
+        return _qfloat8_supported_cache
+    try:
+        if hasattr(torch, "accelerator") and torch.accelerator.is_available():
+            dev_type = torch.accelerator.current_accelerator().type
+        elif torch.cuda.is_available():
+            dev_type = "cuda"
+        elif getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+            dev_type = "mps"
+        else:
+            dev_type = "cpu"
+        if dev_type == "mps":
+            _qfloat8_supported_cache = False
+            return False
+        device = torch.device(dev_type)
+        m = torch.nn.Linear(16, 16, bias=False, device=device, dtype=torch.bfloat16)
+        _quantize_submodule(m, "linear", weights=qtypes["qfloat8"])
+        freeze(m.linear)
+        x = torch.ones((2, 16), device=device, dtype=torch.bfloat16)
+        _ = m.linear(x)
+        _qfloat8_supported_cache = True
+    except Exception:
+        _qfloat8_supported_cache = False
+    return _qfloat8_supported_cache
+
+
 def is_quantized_tensor(t) -> bool:
     # torchao stores quantized weights as tensor subclasses (e.g. AffineQuantizedTensor) under torchao.*
     # that still report as nn.Parameter and expose .dequantize(). (quanto is handled separately.)

@@ -91,7 +91,7 @@ class CriticModel(nn.Module):
 
     def forward(self, inputs):
         # force full-precision inside AMP ctx for stability
-        with torch.cuda.amp.autocast(False):
+        with torch.amp.autocast(inputs.device.type, enabled=False):
             return self.main(inputs.float())
 
 

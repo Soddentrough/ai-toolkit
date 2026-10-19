@@ -28,13 +28,11 @@ if is_triton_available():
     from ...ops.triton.layer_norm import RMSNorm
 else:
     from torch.nn import RMSNorm
-    warnings.warn("Cannot import triton, install triton to use fused RMSNorm for better performance")
-    
+
 if is_flash_attn_available():
     from flash_attn.ops.activations import swiglu
 else:
     from .components import swiglu
-    warnings.warn("Cannot import flash_attn, install flash_attn to use fused SwiGLU for better performance")
 
 # try:
 #     from flash_attn.ops.activations import swiglu as fused_swiglu

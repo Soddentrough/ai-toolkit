@@ -105,7 +105,15 @@ class Attention(nn.Module):
             x = flash_attn_func(q, k, v)[0]
             return x.reshape(b, n, h * d)
         if attn_mode == "cudnn":
-            with sdpa_kernel(SDPBackend.CUDNN_ATTENTION):
+            with sdpa_kernel(
+                [
+                    SDPBackend.CUDNN_ATTENTION,
+                    SDPBackend.FLASH_ATTENTION,
+                    SDPBackend.EFFICIENT_ATTENTION,
+                    SDPBackend.MATH,
+                ],
+                set_priority=True,
+            ):
                 x = F.scaled_dot_product_attention(q, k, v)
         else:  # native
             x = F.scaled_dot_product_attention(q, k, v)

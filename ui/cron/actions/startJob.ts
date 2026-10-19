@@ -248,6 +248,8 @@ const startAndWatchJob = (job: Job) => {
       AITK_JOB_ID: jobID,
       CUDA_DEVICE_ORDER: 'PCI_BUS_ID',
       CUDA_VISIBLE_DEVICES: `${job.gpu_ids}`,
+      HIP_VISIBLE_DEVICES: `${job.gpu_ids}`,
+      TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL: process.env.TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL || '1',
       IS_AI_TOOLKIT_UI: '1',
       PYTHONUNBUFFERED: '1', // write Python output immediately so it is not lost on a crash
     };
