@@ -178,8 +178,6 @@ pip install -r requirements.txt
 
 # AI Toolkit UI
 
-<img src="https://ostris.com/wp-content/uploads/2025/02/toolkit-ui.jpg" alt="AI Toolkit UI" width="100%">
-
 The AI Toolkit UI is a web interface for the AI Toolkit. It allows you to easily start, stop, and monitor jobs. It also allows you to easily train models with a few clicks. It also allows you to set a token for the UI to prevent unauthorized access so it is mostly safe to run on an exposed server.
 
 ## Running the UI
@@ -373,9 +371,7 @@ Everything else should work the same including layer targeting.
 
 ## Support My Work
 
-If you enjoy my projects or use them commercially, please consider sponsoring me. Every bit helps! 💖
-
-<a href="https://ostris.com/support" target="_blank"><img src="https://ostris.com/wp-content/uploads/2025/05/support-banner2.png" alt="Support my work" style="max-width:100%;height:auto;"></a>
+If you enjoy my projects or use them commercially, please consider [sponsoring Ostris](https://ostris.com/support). Every bit helps! 💖
 
 ### Current Sponsors
 
