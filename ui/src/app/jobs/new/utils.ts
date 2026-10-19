@@ -149,3 +149,118 @@ export const handleModelArchChange = (
     setJobConfig(newDefaults[key][0], key);
   }
 };
+
+const IGNORED_NAME_TOKENS = new Set([
+  'my',
+  'first',
+  'new',
+  'test',
+  'run',
+  'job',
+  'copy',
+  'lora',
+  'lokr',
+  'bf16',
+  'fp16',
+  'fp32',
+  'fp8',
+  'qfloat8',
+  'int8',
+  'int4',
+  'zimage',
+  'deturbo',
+  'turbo',
+  'base',
+  'flux',
+  'flex',
+  'flex1',
+  'flex2',
+  'sdxl',
+  'sd15',
+  'sd3',
+  'wan',
+  'wan21',
+  'wan22',
+  'qwen',
+  'lumina',
+  'chroma',
+  'hidream',
+  'kontext',
+  'kling',
+  'hunyuan',
+  'ltx',
+  'ltx2',
+  'cosmos',
+  'omnigen',
+  'auraflow',
+  'pixart',
+  'sana',
+]);
+
+/**
+ * Derives a clean trigger word / subject name from a job training name.
+ * For example:
+ * - "zimage_deturbo_scotty_lora_bf16" -> "scotty"
+ * - "sarah_connor_v2" -> "sarah connor"
+ * - "cyberpunk_neon_style_lora_v1" -> "cyberpunk neon style"
+ */
+export const deriveTriggerFromJobName = (jobName: string): string => {
+  if (!jobName || !jobName.trim()) return '';
+  const rawTokens = jobName
+    .trim()
+    .split(/[_\-\s]+/)
+    .map(t => t.trim())
+    .filter(Boolean);
+
+  const filtered = rawTokens.filter(token => {
+    const lower = token.toLowerCase();
+    if (IGNORED_NAME_TOKENS.has(lower)) return false;
+    // Ignore version tokens like v1, v2, v10, r16, r32, etc.
+    if (/^[vr]\d+$/i.test(lower)) return false;
+    // Ignore pure step/rank numbers like 1000, 2000, 16, 32
+    if (/^\d+$/.test(lower)) return false;
+    return true;
+  });
+
+  if (filtered.length > 0) {
+    return filtered.join(' ');
+  }
+  // Fallback if all tokens were filtered (unless it's the untouched placeholder name)
+  if (jobName.trim().toLowerCase() === 'my_first_lora_v1') {
+    return '';
+  }
+  return rawTokens[0] || '';
+};
+
+/**
+ * Checks if any available dataset option matches the tokens in the job name.
+ */
+export const matchDatasetFromJobName = (
+  jobName: string,
+  datasetOptions: { value: string; label: string }[],
+): string | null => {
+  if (!jobName || !datasetOptions || datasetOptions.length === 0) return null;
+  const lowerName = jobName.toLowerCase();
+  const nameTokens = lowerName.split(/[_\-\s]+/).filter(Boolean);
+
+  // 1. Exact token match against dataset label
+  for (const opt of datasetOptions) {
+    const labelLower = opt.label.toLowerCase();
+    if (nameTokens.includes(labelLower) || lowerName === labelLower) {
+      return opt.value;
+    }
+  }
+
+  // 2. Derived trigger match against dataset label
+  const derived = deriveTriggerFromJobName(jobName).toLowerCase();
+  if (derived) {
+    const slug = derived.replace(/\s+/g, '_');
+    const found = datasetOptions.find(
+      opt => opt.label.toLowerCase() === derived || opt.label.toLowerCase() === slug,
+    );
+    if (found) return found.value;
+  }
+
+  return null;
+};
+

@@ -11,7 +11,7 @@ from toolkit.network_mixins import ToolkitModuleMixin
 from typing import TYPE_CHECKING, Union, List
 
 from optimum.quanto import QBytesTensor, QTensor
-from torchao.dtypes import AffineQuantizedTensor
+from toolkit.util.quantize import is_quantized_tensor
 
 if TYPE_CHECKING:
 
@@ -310,7 +310,7 @@ class LokrModule(ToolkitModuleMixin, nn.Module):
             weight = weight.to(device)
         if isinstance(weight, QTensor) or isinstance(weight, QBytesTensor):
             return weight.dequantize().data.detach()
-        elif isinstance(weight, AffineQuantizedTensor):
+        elif is_quantized_tensor(weight):
             return weight.dequantize().data.detach()
         else:
             return weight.data.detach()
@@ -322,7 +322,7 @@ class LokrModule(ToolkitModuleMixin, nn.Module):
                 bias = bias.to(device)
             if isinstance(bias, QTensor) or isinstance(bias, QBytesTensor):
                 return bias.dequantize().data.detach()
-            elif isinstance(bias, AffineQuantizedTensor):
+            elif is_quantized_tensor(bias):
                 return bias.dequantize().data.detach()
             else:
                 return self.org_module[0].bias.data.detach()

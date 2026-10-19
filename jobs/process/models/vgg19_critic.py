@@ -57,7 +57,7 @@ class Vgg19Critic(nn.Module):
 
     def forward(self, inputs):
         # return self.main(inputs)
-        with torch.cuda.amp.autocast(False):
+        with torch.amp.autocast(inputs.device.type, enabled=False):
             return self.main(inputs.float())
 
 

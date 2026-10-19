@@ -74,6 +74,14 @@ export async function POST(request: Request) {
       extra['job_type'] = body.job_type;
     }
 
+    // Ensure UI loss logging (loss_log.db) is always enabled for jobs created/updated via the API
+    if (job_config?.config?.process?.[0] && !job_config.config.process[0].logging) {
+      job_config.config.process[0].logging = {
+        log_every: 1,
+        use_ui_logger: true,
+      };
+    }
+
     if (id) {
       // Update existing training
       const training = await prisma.job.update({

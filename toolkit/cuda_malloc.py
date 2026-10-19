@@ -70,6 +70,7 @@ if not cuda_malloc:
     try:
         version = ""
         torch_spec = importlib.util.find_spec("torch")
+        is_cuda_build = False
         for folder in torch_spec.submodule_search_locations:
             ver_file = os.path.join(folder, "version.py")
             if os.path.isfile(ver_file):
@@ -77,7 +78,8 @@ if not cuda_malloc:
                 module = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(module)
                 version = module.__version__
-        if int(version[0]) >= 2:  # enable by default for torch version 2.0 and up
+                is_cuda_build = getattr(module, "cuda", None) is not None and getattr(module, "hip", None) is None
+        if is_cuda_build and int(version[0]) >= 2:  # enable by default for CUDA torch version 2.0 and up
             cuda_malloc = cuda_malloc_supported()
     except:
         pass

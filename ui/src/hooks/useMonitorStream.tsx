@@ -164,7 +164,7 @@ async function runLoop() {
         }
       } catch (err) {
         if (!abortController.signal.aborted) {
-          console.error(`Monitor stream error: ${err instanceof Error ? err.message : String(err)}`);
+          console.warn(`Monitor stream disconnected: ${err instanceof Error ? err.message : String(err)}`);
         }
       }
       if (state.connected) {

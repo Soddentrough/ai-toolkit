@@ -152,7 +152,7 @@ class SystemMonitor {
     if (this.isMac) {
       this.initMacGpuName();
     } else {
-      this.startNvLoop();
+      void this.initGpuBackend();
     }
     // Never leave a resident nvidia-smi behind.
     process.once('exit', () => {
@@ -168,6 +168,34 @@ class SystemMonitor {
     setInterval(() => this.tick(), MONITOR_TICK_MS);
   }
 
+  private async initGpuBackend(): Promise<void> {
+    if (process.platform === 'linux') {
+      try {
+        const entries = fs.readdirSync('/sys/class/drm');
+        let hasNvidiaDrm = false;
+        let hasAmdDrm = false;
+        for (const entry of entries) {
+          if (!/^card\d+$/.test(entry)) continue;
+          try {
+            const vendor = fs.readFileSync(`/sys/class/drm/${entry}/device/vendor`, 'utf8').trim();
+            if (vendor === '0x10de') hasNvidiaDrm = true;
+            if (vendor === '0x1002') hasAmdDrm = true;
+          } catch {
+            // ignore
+          }
+        }
+        if (hasAmdDrm && !hasNvidiaDrm) {
+          this.nvUnavailable = true;
+          void this.sampleAmdGpu();
+          return;
+        }
+      } catch {
+        // fallback to standard detection
+      }
+    }
+    this.startNvLoop();
+  }
+
   subscribe(fn: Subscriber): () => void {
     this.subscribers.add(fn);
     return () => this.subscribers.delete(fn);
@@ -180,6 +208,10 @@ class SystemMonitor {
       gpu: withSharedMemory(this.latestGpu, this.latestCpu),
       history: [...this.history],
     };
+  }
+
+  getGpuSnapshot(): GPUApiResponse {
+    return withSharedMemory(this.latestGpu, this.latestCpu);
   }
 
   // -------------------------------------------------------------------------

@@ -29,8 +29,6 @@ from ..utils.import_utils import is_flash_attn_available
 if is_flash_attn_available():
     from flash_attn import flash_attn_varlen_func
     from flash_attn.bert_padding import index_first_axis, pad_input, unpad_input
-else:
-    warnings.warn("Cannot import flash_attn, install flash_attn to use Flash2Varlen attention for better performance")
 
 
 from diffusers.models.attention_processor import Attention

@@ -1,13 +1,14 @@
-"""Unified memory (integrated GPU) support, e.g. NVIDIA DGX Spark (GB10).
+"""Unified memory (integrated GPU / APU / SoC) support.
 
-On these devices the CPU and GPU share the same physical memory, so moving a
-module to the CPU frees nothing. Worse, device -> host copies are extremely
-slow (~100MB/s on GB10), so every "offload to cpu" of a large transformer or
-text encoder stalls for minutes. When a unified memory device is detected we
-make module level moves to the CPU a no-op (dtype casts still apply). Tensor
-level .cpu()/.to('cpu') is left alone since saving, numpy, etc. need it.
+On unified-memory architectures (e.g. NVIDIA Grace Blackwell GB10, AMD Strix Halo
+APUs with large shared memory pools, Apple Silicon) the CPU and GPU share physical
+DRAM, so moving a module to the CPU frees nothing and only incurs unnecessary
+host<->device copy overhead. When a unified memory device is detected we make
+module-level moves to the CPU a no-op (dtype casts still apply). Tensor-level
+.cpu()/.to('cpu') is left alone since saving, numpy, etc. need it.
 
-Set AITK_DISABLE_UNIFIED_MEMORY=1 to turn this off.
+Set AITK_UNIFIED_MEMORY=1 to force-enable or AITK_DISABLE_UNIFIED_MEMORY=1 (or
+AITK_UNIFIED_MEMORY=0) to turn this off.
 """
 import os
 import sys
@@ -17,19 +18,41 @@ import torch
 _patched = False
 
 
+def _get_host_total_memory_bytes() -> int:
+    try:
+        if hasattr(os, "sysconf") and "SC_PAGE_SIZE" in os.sysconf_names and "SC_PHYS_PAGES" in os.sysconf_names:
+            return int(os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES"))
+    except Exception:
+        pass
+    return 0
+
+
 def is_unified_memory() -> bool:
     if os.environ.get("AITK_DISABLE_UNIFIED_MEMORY", "0") == "1":
         return False
-    # linux only (DGX Spark). The Windows RTX Spark stack does not behave the same way
-    if not sys.platform.startswith("linux"):
+    override = os.environ.get("AITK_UNIFIED_MEMORY", "").strip().lower()
+    if override in ("0", "false", "no", "off"):
         return False
-    # NVIDIA only. ROCm APUs report integrated too, but may have a dedicated VRAM carveout
-    if torch.version.hip is not None:
+    if override in ("1", "true", "yes", "on"):
+        return True
+    if not sys.platform.startswith("linux"):
         return False
     try:
         if not torch.cuda.is_available():
             return False
-        return bool(torch.cuda.get_device_properties(0).is_integrated)
+        props = torch.cuda.get_device_properties(0)
+        if not bool(getattr(props, "is_integrated", False)):
+            return False
+        # Integrated GPUs may have a tiny BIOS carveout (e.g. 512MB-2GB iGPU) where
+        # device memory is still capacity-constrained relative to host RAM, or a
+        # unified memory pool (e.g. GB10, Strix Halo) where the GPU addresses most
+        # of system RAM. Only treat as unified memory when the GPU pool is at least
+        # 50% of system RAM (or >= 48 GB).
+        dev_total = int(getattr(props, "total_memory", 0))
+        host_total = _get_host_total_memory_bytes()
+        if host_total > 0 and dev_total < (host_total // 2) and dev_total < (48 * 1024**3):
+            return False
+        return True
     except Exception:
         return False
 

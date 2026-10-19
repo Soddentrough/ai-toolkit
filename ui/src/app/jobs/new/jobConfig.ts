@@ -1,4 +1,3 @@
-'use client';
 import { isMac } from '@/helpers/basic';
 import { defaultSampleConfig } from '@/helpers/defaultSamples';
 import { JobConfig, SampleConfig, DatasetConfig, SliderConfig } from '@/types';
@@ -7,7 +6,7 @@ export const defaultDatasetConfig: DatasetConfig = {
   folder_path: '/path/to/images/folder',
   mask_path: null,
   mask_min_value: 0.1,
-  default_caption: '',
+  default_caption: '[trigger]',
   caption_ext: 'txt',
   caption_dropout_rate: 0.05,
   cache_latents_to_disk: false,

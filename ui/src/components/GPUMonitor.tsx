@@ -33,13 +33,6 @@ const GpuMonitor: React.FC = () => {
     }
   };
 
-  console.log('state', {
-    loading,
-    gpuData,
-    error,
-    lastUpdated,
-  });
-
   const content = useMemo(() => {
     if (loading && !gpuData) {
       return <Loading />;

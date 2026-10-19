@@ -8,37 +8,16 @@ export const defaultSampleConfig: SampleConfig = {
   height: 1024,
   samples: [
     {
-      prompt: 'woman with red hair, playing chess at the park, bomb going off in the background',
+      prompt: '[trigger], close-up portrait photo, natural lighting, sharp focus, high detail',
     },
     {
-      prompt: 'a woman holding a coffee cup, in a beanie, sitting at a cafe',
+      prompt: '[trigger] sitting at an outdoor cafe table, candid 35mm film photograph, warm afternoon sunlight',
     },
     {
-      prompt: 'a horse is a DJ at a night club, fish eye lens, smoke machine, lazer lights, holding a martini',
+      prompt: '[trigger] standing in a scenic park, medium shot, soft golden hour lighting, shallow depth of field',
     },
     {
-      prompt:
-        'a man showing off his cool new t shirt at the beach, a shark is jumping out of the water in the background',
-    },
-    {
-      prompt: 'a bear building a log cabin in the snow covered mountains',
-    },
-    {
-      prompt: 'woman playing the guitar, on stage, singing a song, laser lights, punk rocker',
-    },
-    {
-      prompt: 'hipster man with a beard, building a chair, in a wood shop',
-    },
-    {
-      prompt:
-        'photo of a man, white background, medium shot, modeling clothing, studio lighting, white backdrop',
-    },
-    {
-      prompt: "a man holding a sign that says, 'this is a sign'",
-    },
-    {
-      prompt:
-        'a bulldog, in a post apocalyptic world, with a shotgun, in a leather jacket, in a desert, with a motorcycle',
+      prompt: '[trigger] in a studio portrait, clean neutral backdrop, dramatic rim lighting, detailed texture',
     },
   ],
   neg: '',

@@ -198,8 +198,14 @@ async function getGpuInfo() {
   };
 }
 
+import { startMonitor } from '@/server/monitor';
+
 export async function GET() {
   try {
+    const monitorSnap = startMonitor().getGpuSnapshot();
+    if (monitorSnap.hasGpuMonitor && monitorSnap.gpus.length > 0) {
+      return NextResponse.json(monitorSnap);
+    }
     const gpuInfo = await cached('gpu-info', getGpuInfo);
     return NextResponse.json(gpuInfo);
   } catch (error) {
