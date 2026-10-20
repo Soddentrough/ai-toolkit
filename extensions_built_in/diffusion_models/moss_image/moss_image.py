@@ -117,6 +117,30 @@ def _hub_file_folder(repo_id: str, filename: str) -> str:
     return os.path.dirname(path)
 
 
+@torch.no_grad()
+def encode_text_batch(text_encoder, tokenizer, texts, max_length, device) -> List[torch.Tensor]:
+    """Chat-templated prompts -> per-item (L_i, D) final states from ONE forward.
+    Right-padded, no attention mask: for the causal model the pads sit after
+    each prompt's real tokens, so neither causal attention nor the gated-delta
+    recurrence can reach them -- each item's first L_i states equal its
+    unpadded forward (the HF mask path only zeroes padded states, which is
+    left-padding hygiene, and would also drop attention off its fast path).
+    Default arange positions are right for right padding."""
+    enc = tokenizer(
+        texts,
+        return_tensors="pt",
+        padding=True,
+        padding_side="right",
+        truncation=True,
+        max_length=max_length,
+    )
+    lengths = enc["attention_mask"].sum(1).tolist()
+    states = text_encoder(
+        input_ids=enc["input_ids"].to(device), use_cache=False
+    ).last_hidden_state
+    return [states[i, :n] for i, n in enumerate(lengths)]
+
+
 def _drop_repeats(images):
     """ctrl_img_1 defaults to ctrl_img, so a single reference can arrive twice."""
     kept = []
@@ -559,21 +583,24 @@ class MossImageModel(BaseModel):
         else:
             control_images = [None] * len(prompt)
 
-        embeds = []
-        # one unpadded forward per prompt, like the vendor (padding would leak
-        # into the gated-delta recurrence)
-        for text, images in zip(prompt, control_images):
+        # text-only prompts go through ONE right-padded forward (exact, see
+        # encode_text_batch); prompts with references stay one forward each
+        # (their image-pad runs differ per prompt)
+        embeds: List[Optional[torch.Tensor]] = [None] * len(prompt)
+        text_only = [i for i, images in enumerate(control_images) if not images]
+        if text_only:
+            states = encode_text_batch(
+                self.text_encoder,
+                self.tokenizer,
+                [self._chat(prompt[i]) for i in text_only],
+                self.max_text_length,
+                self.device_torch,
+            )
+            for i, st in zip(text_only, states):
+                embeds[i] = st.to(self.torch_dtype)
+        for i, (text, images) in enumerate(zip(prompt, control_images)):
             if images:
-                states = self._encode_with_images(text, images)
-            else:
-                input_ids = self.tokenizer(
-                    self._chat(text),
-                    return_tensors="pt",
-                    truncation=True,
-                    max_length=self.max_text_length,
-                )["input_ids"].to(self.device_torch)
-                states = self.text_encoder(input_ids=input_ids, use_cache=False).last_hidden_state[0]
-            embeds.append(states.to(self.torch_dtype))
+                embeds[i] = self._encode_with_images(text, images).to(self.torch_dtype)
         return AdvancedPromptEmbeds(text_embeds=embeds)
 
     def get_loss_target(self, *args, **kwargs):
@@ -626,6 +653,61 @@ class MossImageModel(BaseModel):
             metadata=get_meta_for_safetensors(meta, name=self.arch),
             quantized=False,
         )
+
+    # LoRA keys: the module fuses q/k/v (like the Comfy files), but ComfyUI's
+    # MOSS LoRA convention addresses the separate projections (mapped onto
+    # fused files by row slices, and the only names unfused files have).
+    # Saved as q/k/v, fused back on load.
+    _QKV_SPLIT_ROWS = ("lora_B.weight", "lora_up.weight")
+    _QKV_SHARED = ("lora_A.weight", "lora_down.weight", "alpha")
+
+    def convert_lora_weights_before_save(self, state_dict):
+        state_dict = super().convert_lora_weights_before_save(state_dict)
+        out = {}
+        for key, value in state_dict.items():
+            base, sep, suffix = key.partition(".proj.qkv.")
+            if not sep:
+                out[key] = value
+            elif suffix in self._QKV_SPLIT_ROWS:
+                for name, part in zip(("q", "k", "v"), value.chunk(3, dim=0)):
+                    out[f"{base}.proj.{name}.{suffix}"] = part.contiguous()
+            elif suffix in self._QKV_SHARED:
+                for name in ("q", "k", "v"):
+                    out[f"{base}.proj.{name}.{suffix}"] = value.clone()
+            else:
+                out[key] = value  # e.g. LoKr: kept fused (maps on fused files)
+        return out
+
+    def convert_lora_weights_before_load(self, state_dict):
+        state_dict = super().convert_lora_weights_before_load(state_dict)
+        out = dict(state_dict)
+        down_keys = [
+            k for k in state_dict
+            if k.endswith((".proj.q.lora_A.weight", ".proj.q.lora_down.weight"))
+        ]
+        for q_down in down_keys:
+            base, _, down_suffix = q_down.partition(".proj.q.")
+            up_suffix = "lora_B.weight" if down_suffix == "lora_A.weight" else "lora_up.weight"
+            names = [f"{base}.proj.{p}." for p in ("q", "k", "v")]
+            if not all(n + down_suffix in state_dict and n + up_suffix in state_dict for n in names):
+                continue
+            downs = [out.pop(n + down_suffix) for n in names]
+            ups = [out.pop(n + up_suffix) for n in names]
+            alphas = [out.pop(n + "alpha", None) for n in names]
+            rank = downs[0].shape[0]
+            if all(torch.equal(downs[0], d) for d in downs[1:]):
+                # shared down projection (our saves): the fused rank-r LoRA
+                down, up = downs[0], torch.cat(ups, dim=0)
+            else:
+                # independent q/k/v LoRAs: exact rank-3r block form
+                down = torch.cat(downs, dim=0)
+                up = torch.block_diag(*ups)
+            out[f"{base}.proj.qkv.{down_suffix}"] = down
+            out[f"{base}.proj.qkv.{up_suffix}"] = up
+            if alphas[0] is not None:
+                # keep alpha / rank, the per-projection scale
+                out[f"{base}.proj.qkv.alpha"] = alphas[0] * (down.shape[0] / rank)
+        return out
 
     def get_base_model_version(self):
         return "moss_image"
