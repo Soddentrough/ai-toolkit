@@ -31,7 +31,7 @@ const defaultNameOrPath = '';
 export const defaultQtype = 'convrot8';
 
 const extensionsAudio = ['mp3', 'wav', 'flac', 'ogg'];
-const extensionsImage = ['jpg', 'jpeg', 'png', 'bmp', 'webp'];
+const extensionsImage = ['jpg', 'jpeg', 'png', 'bmp', 'webp', 'heic', 'heif'];
 const extensionsVideo = ['mp4', 'mov', 'webm', 'mkv', 'avi'];
 
 const defaultExtensions = [...extensionsImage];

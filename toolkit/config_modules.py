@@ -1324,7 +1324,7 @@ class GenerateImageConfig:
         from PIL import Image as PILImage
         ext = os.path.splitext(media_path)[1].lower()
         img = None
-        if ext in ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp']:
+        if ext in ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.heic', '.heif']:
             img = PILImage.open(media_path)  # animated formats open on the first frame
         elif ext == '.mp4':
             import cv2

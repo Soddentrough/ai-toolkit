@@ -17,6 +17,7 @@ optimum-quanto
 oyaml
 peft
 pillow
+pillow-heif
 prodigyopt
 python-dotenv
 pytorch-wavelets

@@ -20,7 +20,7 @@ import warnings
 warnings.filterwarnings("ignore")
 logging.disable(logging.WARNING)
 
-IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "bmp", "webp"}
+IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "bmp", "webp", "heic", "heif"}
 # reasoning budget on top of max_new_tokens when thinking is on
 MAX_THINKING_TOKENS = 4096
 

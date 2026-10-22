@@ -56,6 +56,8 @@ export async function GET(request: NextRequest, { params }: { params: { filePath
       '.webp': 'image/webp',
       '.svg': 'image/svg+xml',
       '.bmp': 'image/bmp',
+      '.heic': 'image/heic',
+      '.heif': 'image/heif',
       '.safetensors': 'application/octet-stream',
       '.zip': 'application/zip',
       // Videos

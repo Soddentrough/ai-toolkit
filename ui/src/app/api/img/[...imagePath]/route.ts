@@ -2,9 +2,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import { Readable } from 'stream';
 import { getDatasetsRoot, getTrainingFolder, getDataRoot } from '@/server/settings';
 import { catchAllToFilePath } from '@/server/catchAllPath';
+import { TOOLKIT_ROOT } from '@/paths';
+
+const execFileAsync = promisify(execFile);
 
 const contentTypeMap: { [key: string]: string } = {
   // Images
@@ -15,6 +20,8 @@ const contentTypeMap: { [key: string]: string } = {
   '.webp': 'image/webp',
   '.svg': 'image/svg+xml',
   '.bmp': 'image/bmp',
+  '.heic': 'image/heic',
+  '.heif': 'image/heif',
   // Videos
   '.mp4': 'video/mp4',
   '.avi': 'video/x-msvideo',
@@ -61,14 +68,46 @@ export async function GET(request: NextRequest, { params }: { params: { imagePat
     // folder when it exists; otherwise falls through to the full file exactly
     // as before. A source with alpha gets a <name>.<ext>.png thumb so the
     // transparency survives, everything else stays <name>.<ext>.jpg.
-    if (request.nextUrl.searchParams.has('thumb')) {
+    const origExt = path.extname(resolved).toLowerCase();
+    const isHeic = origExt === '.heic' || origExt === '.heif';
+    const wantThumb = request.nextUrl.searchParams.has('thumb');
+
+    if (wantThumb) {
       const thumbBase = path.join(/*turbopackIgnore: true*/ path.dirname(resolved), '.thumbs', path.basename(resolved));
+      let foundThumb = false;
       for (const thumbPath of [`${thumbBase}.png`, `${thumbBase}.jpg`]) {
         const thumbStat = await fs.promises.stat(/*turbopackIgnore: true*/ thumbPath).catch(() => null);
         if (thumbStat && thumbStat.isFile()) {
           resolved = thumbPath;
+          foundThumb = true;
           break;
         }
+      }
+      if (!foundThumb && isHeic) {
+        const thumbJpg = `${thumbBase}.jpg`;
+        const scriptPath = path.join(/*turbopackIgnore: true*/ TOOLKIT_ROOT, 'toolkit', 'heic_preview.py');
+        await execFileAsync('python3', [scriptPath, resolved, thumbJpg, '300']).catch(() => null);
+        const thumbStat = await fs.promises.stat(/*turbopackIgnore: true*/ thumbJpg).catch(() => null);
+        if (thumbStat && thumbStat.isFile()) {
+          resolved = thumbJpg;
+        }
+      }
+    } else if (isHeic) {
+      // Chrome/Firefox on Linux do not natively decode image/heic in <img> tags;
+      // serve a cached full-resolution JPEG preview from .thumbs/ instead.
+      const previewJpg = path.join(
+        /*turbopackIgnore: true*/ path.dirname(resolved),
+        '.thumbs',
+        `${path.basename(resolved)}.preview.jpg`,
+      );
+      let previewStat = await fs.promises.stat(/*turbopackIgnore: true*/ previewJpg).catch(() => null);
+      if (!previewStat || !previewStat.isFile()) {
+        const scriptPath = path.join(/*turbopackIgnore: true*/ TOOLKIT_ROOT, 'toolkit', 'heic_preview.py');
+        await execFileAsync('python3', [scriptPath, resolved, previewJpg, '0']).catch(() => null);
+        previewStat = await fs.promises.stat(/*turbopackIgnore: true*/ previewJpg).catch(() => null);
+      }
+      if (previewStat && previewStat.isFile()) {
+        resolved = previewJpg;
       }
     }
 

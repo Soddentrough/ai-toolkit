@@ -3,6 +3,12 @@ import os
 
 import torch
 
+try:
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+except ImportError:
+    pass
+
 
 class UnusableFileError(Exception):
     """A model raises this from encode when a dataset file cannot be used (e.g. no sheet could be transcribed);
@@ -75,3 +81,12 @@ def get_quick_signature_string(file_path):
     except Exception as e:
         print(f"Error accessing file {file_path}: {e}")
         return None
+
+
+def format_gpu_error_message(e: Exception) -> str:
+    msg = str(e)
+    msg = msg.replace("CUDA out of memory.", "GPU out of memory.")
+    msg = msg.replace("CUDA error:", "GPU error:")
+    if getattr(torch.version, "hip", None) is not None:
+        msg = msg.replace("PYTORCH_CUDA_ALLOC_CONF", "PYTORCH_HIP_ALLOC_CONF")
+    return msg

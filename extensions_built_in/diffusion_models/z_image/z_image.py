@@ -334,6 +334,15 @@ class ZImageModel(BaseModel):
         # CFG is 0 normalized for this model
         guidance = max(0.0, gen_config.guidance_scale - 1.0)
 
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            try:
+                free_bytes, _ = torch.cuda.mem_get_info(self.device_torch)
+                if free_bytes < 8 * 1024**3 and hasattr(pipeline.vae, "enable_tiling"):
+                    pipeline.vae.enable_tiling()
+            except Exception:
+                pass
+
         img = pipeline(
             prompt_embeds=conditional_embeds.text_embeds,
             negative_prompt_embeds=unconditional_embeds.text_embeds,
@@ -345,6 +354,8 @@ class ZImageModel(BaseModel):
             generator=generator,
             **extra,
         ).images[0]
+        if hasattr(pipeline.vae, "disable_tiling"):
+            pipeline.vae.disable_tiling()
         return img
 
     def get_noise_prediction(
