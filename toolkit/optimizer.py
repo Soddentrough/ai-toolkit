@@ -74,8 +74,12 @@ def get_optimizer(
         else:
             raise ValueError(f'Unknown optimizer type {optimizer_type}')
     elif lower_type == 'adam':
+        if 'foreach' not in optimizer_params and 'fused' not in optimizer_params:
+            optimizer_params = {**optimizer_params, 'foreach': True}
         optimizer = torch.optim.Adam(params, lr=float(learning_rate), eps=1e-6, **optimizer_params)
     elif lower_type == 'adamw':
+        if 'foreach' not in optimizer_params and 'fused' not in optimizer_params:
+            optimizer_params = {**optimizer_params, 'foreach': True}
         optimizer = torch.optim.AdamW(params, lr=float(learning_rate), eps=1e-6, **optimizer_params)
     elif lower_type == 'lion':
         try:

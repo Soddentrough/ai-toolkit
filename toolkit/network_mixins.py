@@ -216,7 +216,8 @@ class ToolkitModuleMixin:
             lx = torch.nn.functional.dropout(lx, p=self.dropout)
 
         # rank dropout
-        if self.rank_dropout is not None and self.rank_dropout > 0 and self.training:
+        has_rank_dropout = self.rank_dropout is not None and self.rank_dropout > 0 and self.training
+        if has_rank_dropout:
             mask = torch.rand((lx.size(0), self.lora_dim), device=lx.device) > self.rank_dropout
             if len(lx.size()) == 3:
                 mask = mask.unsqueeze(1)  # for Text Encoder
@@ -230,13 +231,20 @@ class ToolkitModuleMixin:
         else:
             scale = self._runtime_scale
 
-        lx = self.lora_up(lx)
-
         # handle trainable scaler method locon does
-        if hasattr(self, 'scalar'):
+        has_scalar = hasattr(self, 'scalar')
+        if has_scalar:
             scale = scale * self.scalar
 
-        return lx * scale
+        need_scale = has_scalar or has_rank_dropout or getattr(self, 'scale', 1.0) != 1.0
+        if need_scale and getattr(self.lora_up, 'bias', None) is None:
+            lx = lx * scale.to(lx.dtype)
+            return self.lora_up(lx)
+
+        lx = self.lora_up(lx)
+        if need_scale:
+            lx = lx * scale.to(lx.dtype)
+        return lx
 
     def lorm_forward(self: Network, x, *args, **kwargs):
         network: Network = self.network_ref()
@@ -272,25 +280,12 @@ class ToolkitModuleMixin:
                 x = x.to(orig_dtype)
 
     def forward(self: Module, x, *args, **kwargs):
-        skip = False
         network: Network = self.network_ref()
         if network.is_lorm:
             # we are doing lorm
             return self.lorm_forward(x, *args, **kwargs)
 
-        # skip if not active
-        if not network.is_active:
-            skip = True
-
-        # skip if is merged in
-        if network.is_merged_in:
-            skip = True
-
-        # skip if multiplier is 0
-        if network._multiplier == 0:
-            skip = True
-
-        if skip:
+        if not network.is_active or network.is_merged_in or network._multiplier == 0:
             # network is not active, avoid doing anything
             return self.org_forward(x, *args, **kwargs)
 
@@ -305,22 +300,44 @@ class ToolkitModuleMixin:
 
         if isinstance(x, QTensor):
             x = x.dequantize()
-        # always cast to float32
-        lora_input = x.to(self.lora_down.weight.dtype)
-        lora_output = self._call_forward(lora_input)
-        multiplier = self.network_ref().torch_multiplier
 
-        lora_output_batch_size = lora_output.size(0)
-        multiplier_batch_size = multiplier.size(0)
-        if lora_output_batch_size != multiplier_batch_size:
-            num_interleaves = lora_output_batch_size // multiplier_batch_size
-            # todo check if this is correct, do we just concat when doing cfg?
-            multiplier = multiplier.repeat_interleave(num_interleaves)
+        is_dora = self.__class__.__name__ == "DoRAModule"
+        weight_dtype = self.lora_down.weight.dtype
+        if (
+            not is_dora
+            and x.dtype != weight_dtype
+            and x.device.type == "cuda"
+            and x.dtype in (torch.bfloat16, torch.float16)
+        ):
+            with torch.amp.autocast(device_type="cuda", dtype=x.dtype):
+                lora_output = self._call_forward(x)
+        else:
+            lora_input = x.to(weight_dtype) if x.dtype != weight_dtype else x
+            lora_output = self._call_forward(lora_input)
 
-        scaled_lora_output = broadcast_and_multiply(lora_output, multiplier)
-        scaled_lora_output = scaled_lora_output.to(org_forwarded.dtype)
+        raw_mult = network._multiplier
+        if not is_dora and isinstance(raw_mult, (int, float)) and raw_mult == 1.0:
+            scaled_lora_output = (
+                lora_output.to(org_forwarded.dtype)
+                if lora_output.dtype != org_forwarded.dtype
+                else lora_output
+            )
+        else:
+            multiplier = network.torch_multiplier
+            if not is_dora and multiplier.dtype != lora_output.dtype:
+                multiplier = multiplier.to(lora_output.dtype)
 
-        if self.__class__.__name__ == "DoRAModule":
+            lora_output_batch_size = lora_output.size(0)
+            multiplier_batch_size = multiplier.size(0)
+            if lora_output_batch_size != multiplier_batch_size:
+                num_interleaves = lora_output_batch_size // multiplier_batch_size
+                # todo check if this is correct, do we just concat when doing cfg?
+                multiplier = multiplier.repeat_interleave(num_interleaves)
+
+            scaled_lora_output = broadcast_and_multiply(lora_output, multiplier)
+            scaled_lora_output = scaled_lora_output.to(org_forwarded.dtype)
+
+        if is_dora:
             # ref https://github.com/huggingface/peft/blob/1e6d1d73a0850223b0916052fd8d2382a90eae5a/src/peft/tuners/lora/layer.py#L417
             # x = dropout(x)
             # todo this wont match the dropout applied to the lora
