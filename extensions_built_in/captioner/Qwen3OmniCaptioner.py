@@ -28,7 +28,7 @@ logging.disable(logging.WARNING)
 VIDEO_FPS = 2
 
 # still-image files caption through the image pipeline (no audio, no frames)
-IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "bmp", "webp"}
+IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "bmp", "webp", "heic", "heif"}
 # audio-only files caption through the audio pipeline (no frames)
 AUDIO_EXTENSIONS = {"mp3", "wav", "flac", "ogg", "m4a", "aac"}
 

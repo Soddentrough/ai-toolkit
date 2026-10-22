@@ -155,7 +155,8 @@ class InferenceEngine(BaseExtensionProcess):
         if isinstance(e, KeyboardInterrupt):
             self.ui.update_status("stopped", "Engine stopped")
         else:
-            self.ui.update_status("error", str(e))
+            from toolkit.basic import format_gpu_error_message
+            self.ui.update_status("error", format_gpu_error_message(e))
         try:
             os.remove(self.endpoint_path)
         except Exception:

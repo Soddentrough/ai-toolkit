@@ -518,7 +518,8 @@ class BaseCaptioner(BaseExtensionProcess):
                     self.is_stopping = True
                     self.update_status("stopped", "Job stopped")
                 elif not self.is_stopping:
-                    self.update_status("error", str(e))
+                    from toolkit.basic import format_gpu_error_message
+                    self.update_status("error", format_gpu_error_message(e))
                 asyncio.run(self.wait_for_all_async())
             except Exception as db_err:
                 print(

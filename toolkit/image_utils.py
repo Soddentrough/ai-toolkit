@@ -14,6 +14,12 @@ import torch
 from diffusers import AutoencoderTiny
 from PIL import Image as PILImage
 
+try:
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+except ImportError:
+    pass
+
 FILE_UNKNOWN = "Sorry, don't know how to get size for this file."
 
 

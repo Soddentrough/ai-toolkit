@@ -108,7 +108,7 @@ export default function SampleControlImage({
   const { getRootProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      'image/*': ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'],
+      'image/*': ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.heic', '.heif'],
       'video/*': VIDEO_EXTS,
       ...(allowAudio ? { 'audio/*': AUDIO_EXTS } : {}),
     },

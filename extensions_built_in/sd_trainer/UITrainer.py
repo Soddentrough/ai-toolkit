@@ -223,7 +223,8 @@ class UITrainer(SDTrainer):
             if self.accelerator.is_main_process:
                 self.update_status("stopped", "Job stopped")
         elif self.accelerator.is_main_process and not self.is_stopping:
-            self.update_status("error", str(e))
+            from toolkit.basic import format_gpu_error_message
+            self.update_status("error", format_gpu_error_message(e))
         self.update_db_key("step", self.last_save_step)
         asyncio.run(self.wait_for_all_async())
         self.thread_pool.shutdown(wait=True)

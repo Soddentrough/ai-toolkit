@@ -130,7 +130,8 @@ def main():
             job.cleanup()
             jobs_completed += 1
         except Exception as e:
-            print_acc(f"Error running job: {e}")
+            from toolkit.basic import format_gpu_error_message
+            print_acc(f"Error running job: {format_gpu_error_message(e)}")
             jobs_failed += 1
             try:
                 job.process[0].on_error(e)
