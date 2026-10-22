@@ -24,7 +24,7 @@ interface Page {
   name: string;
   value: PageKey;
   icon: React.ComponentType<{ className?: string }>;
-  component: React.ComponentType<{ job: Job }>;
+  component: React.ComponentType<{ job: Job; onRefresh?: () => void }>;
   menuItem?: React.ComponentType<{ job?: Job | null }> | null;
   mainCss?: string;
   jobTypes?: string[]; // if specified, only show this page for these job types
@@ -141,7 +141,7 @@ export default function JobPage({ params }: { params: { jobID: string } }) {
           <>
             {pages.map(page => {
               const Component = page.component;
-              return page.value === pageKey ? <Component key={page.value} job={job} /> : null;
+              return page.value === pageKey ? <Component key={page.value} job={job} onRefresh={refreshJob} /> : null;
             })}
           </>
         )}

@@ -47,8 +47,10 @@ export async function findAmdSmiPath(): Promise<string | null> {
   if (process.platform === 'win32') return null;
   const candidates = [
     process.env.ROCM_PATH ? `${process.env.ROCM_PATH}/bin/amd-smi` : null,
-    '/usr/bin/amd-smi',
+    '/opt/rocm/core-10.0/bin/amd-smi',
     '/opt/rocm/bin/amd-smi',
+    '/usr/bin/amd-smi',
+    `${os.homedir()}/.local/bin/amd-smi`,
   ].filter((p): p is string => Boolean(p));
 
   for (const candidate of candidates) {

@@ -20,7 +20,7 @@
  *
  * Usage:
  *   node dist/cron/fileServer.js start --port 8675
- *   ts-node-dev cron/fileServer.ts dev --port 3000
+ *   tsx watch cron/fileServer.ts dev --port 3000
  */
 import cluster from 'cluster';
 import { spawn } from 'child_process';

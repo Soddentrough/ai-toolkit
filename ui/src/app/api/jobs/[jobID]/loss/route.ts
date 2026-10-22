@@ -3,30 +3,13 @@ import prisma from '@/server/prisma';
 import path from 'path';
 import fs from 'fs';
 import { getTrainingFolder } from '@/server/settings';
-
-import sqlite3 from 'sqlite3';
+import { DatabaseSync } from 'node:sqlite';
 
 export const runtime = 'nodejs';
 
 function openDb(filename: string) {
-  const db = new sqlite3.Database(filename);
-  db.configure('busyTimeout', 30_000);
+  const db = new DatabaseSync(filename, { timeout: 30_000 });
   return db;
-}
-
-function all<T = any>(db: sqlite3.Database, sql: string, params: any[] = []) {
-  return new Promise<T[]>((resolve, reject) => {
-    db.all(sql, params, (err, rows) => {
-      if (err) reject(err);
-      else resolve(rows as T[]);
-    });
-  });
-}
-
-function closeDb(db: sqlite3.Database) {
-  return new Promise<void>((resolve, reject) => {
-    db.close((err) => (err ? reject(err) : resolve()));
-  });
 }
 
 export async function GET(request: NextRequest, { params }: { params: { jobID: string } }) {
@@ -56,17 +39,12 @@ export async function GET(request: NextRequest, { params }: { params: { jobID: s
   const db = openDb(logPath);
 
   try {
-    const keysRows = await all<{ key: string }>(db, `SELECT key FROM metric_keys ORDER BY key ASC`);
+    const keysRows = db.prepare(`SELECT key FROM metric_keys ORDER BY key ASC`).all() as { key: string }[];
     const keys = keysRows.map((r) => r.key);
 
-    const points = await all<{
-      step: number;
-      wall_time: number;
-      value: number | null;
-      value_text: string | null;
-    }>(
-      db,
-      `
+    const points = db
+      .prepare(
+        `
       SELECT
         m.step AS step,
         s.wall_time AS wall_time,
@@ -79,9 +57,14 @@ export async function GET(request: NextRequest, { params }: { params: { jobID: s
         AND (m.step % ?) = 0
       ORDER BY m.step ASC
       LIMIT ?
-      `,
-      [key, sinceStep, sinceStep, stride, limit]
-    );
+      `
+      )
+      .all(key, sinceStep, sinceStep, stride, limit) as {
+      step: number;
+      wall_time: number;
+      value: number | null;
+      value_text: string | null;
+    }[];
 
     return NextResponse.json({
       key,
@@ -93,14 +76,8 @@ export async function GET(request: NextRequest, { params }: { params: { jobID: s
       })),
     });
   } finally {
-    await closeDb(db);
+    db.close();
   }
-}
-
-function run(db: sqlite3.Database, sql: string, params: any[] = []) {
-  return new Promise<void>((resolve, reject) => {
-    db.run(sql, params, (err) => (err ? reject(err) : resolve()));
-  });
 }
 
 // Delete every logged step in [min_step, max_step] (inclusive) across all
@@ -136,25 +113,25 @@ export async function DELETE(request: NextRequest, { params }: { params: { jobID
   const db = openDb(logPath);
 
   try {
-    await run(db, 'BEGIN;');
+    db.exec('BEGIN;');
     try {
       // The FK cascade on metrics only fires with PRAGMA foreign_keys=ON, so
       // delete metrics explicitly rather than relying on it.
-      await run(db, `DELETE FROM metrics WHERE step >= ? AND step <= ?;`, [minStep, maxStep]);
-      await run(db, `DELETE FROM steps WHERE step >= ? AND step <= ?;`, [minStep, maxStep]);
-      await run(
-        db,
-        `DELETE FROM metric_keys WHERE NOT EXISTS (SELECT 1 FROM metrics WHERE metrics.key = metric_keys.key);`
-      );
-      await run(
-        db,
+      db.prepare(`DELETE FROM metrics WHERE step >= ? AND step <= ?;`).run(minStep, maxStep);
+      db.prepare(`DELETE FROM steps WHERE step >= ? AND step <= ?;`).run(minStep, maxStep);
+      db.exec(`DELETE FROM metric_keys WHERE NOT EXISTS (SELECT 1 FROM metrics WHERE metrics.key = metric_keys.key);`);
+      db.exec(
         `UPDATE metric_keys SET
           first_seen_step = (SELECT MIN(step) FROM metrics WHERE metrics.key = metric_keys.key),
           last_seen_step = (SELECT MAX(step) FROM metrics WHERE metrics.key = metric_keys.key);`
       );
-      await run(db, 'COMMIT;');
+      db.exec('COMMIT;');
     } catch (e) {
-      await run(db, 'ROLLBACK;').catch(() => { });
+      try {
+        db.exec('ROLLBACK;');
+      } catch {
+        // ignore rollback error
+      }
       throw e;
     }
     return NextResponse.json({ ok: true, min_step: minStep, max_step: maxStep });
@@ -162,6 +139,6 @@ export async function DELETE(request: NextRequest, { params }: { params: { jobID
     console.error('Error deleting loss range:', e);
     return NextResponse.json({ error: e?.message ?? 'Failed to delete range' }, { status: 500 });
   } finally {
-    await closeDb(db);
+    db.close();
   }
 }

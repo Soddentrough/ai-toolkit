@@ -62,9 +62,9 @@ export async function GET(request: NextRequest, { params }: { params: { imagePat
     // as before. A source with alpha gets a <name>.<ext>.png thumb so the
     // transparency survives, everything else stays <name>.<ext>.jpg.
     if (request.nextUrl.searchParams.has('thumb')) {
-      const thumbBase = path.join(path.dirname(resolved), '.thumbs', path.basename(resolved));
+      const thumbBase = path.join(/*turbopackIgnore: true*/ path.dirname(resolved), '.thumbs', path.basename(resolved));
       for (const thumbPath of [`${thumbBase}.png`, `${thumbBase}.jpg`]) {
-        const thumbStat = await fs.promises.stat(thumbPath).catch(() => null);
+        const thumbStat = await fs.promises.stat(/*turbopackIgnore: true*/ thumbPath).catch(() => null);
         if (thumbStat && thumbStat.isFile()) {
           resolved = thumbPath;
           break;
@@ -78,7 +78,7 @@ export async function GET(request: NextRequest, { params }: { params: { imagePat
     }
 
     // Stat file (async)
-    const stat = await fs.promises.stat(resolved).catch(() => null);
+    const stat = await fs.promises.stat(/*turbopackIgnore: true*/ resolved).catch(() => null);
     if (!stat || !stat.isFile()) {
       return new NextResponse('File not found', { status: 404 });
     }
@@ -104,8 +104,8 @@ export async function GET(request: NextRequest, { params }: { params: { imagePat
     const buildBody = (start?: number, end?: number) => {
       const nodeStream =
         start !== undefined && end !== undefined
-          ? fs.createReadStream(resolved, { start, end })
-          : fs.createReadStream(resolved);
+          ? fs.createReadStream(/*turbopackIgnore: true*/ resolved, { start, end })
+          : fs.createReadStream(/*turbopackIgnore: true*/ resolved);
 
       // Wire client disconnect → destroy the file stream so we don't keep
       // reading bytes for a request the browser has already cancelled.

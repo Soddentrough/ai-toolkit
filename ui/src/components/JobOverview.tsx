@@ -4,16 +4,17 @@ import useCPUInfo from '@/hooks/useCPUInfo';
 import GPUWidget from '@/components/GPUWidget';
 import CPUWidget from '@/components/CPUWidget';
 import FilesWidget from '@/components/FilesWidget';
-import { getTotalSteps } from '@/utils/jobs';
+import { getTotalSteps, updateJobGpu } from '@/utils/jobs';
 import { Cpu, HardDrive, Info, Gauge } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import useJobLog from '@/hooks/useJobLog';
 
 interface JobOverviewProps {
   job: Job;
+  onRefresh?: () => void;
 }
 
-export default function JobOverview({ job }: JobOverviewProps) {
+export default function JobOverview({ job, onRefresh }: JobOverviewProps) {
   const gpuIds = useMemo(() => {
     if (job.gpu_ids === 'mps') {
       return [0]; // For MPS, we can just return a single GPU ID since it's virtualized
@@ -24,8 +25,8 @@ export default function JobOverview({ job }: JobOverviewProps) {
   const logRef = useRef<HTMLDivElement>(null);
   // Track whether we should auto-scroll to bottom
   const [isScrolledToBottom, setIsScrolledToBottom] = useState(true);
-  console.log('job.gpu_ids', job.gpu_ids);
   const { gpuList, isGPUInfoLoaded } = useGPUInfo(gpuIds, 5000);
+  const { gpuList: allGpus } = useGPUInfo();
   const { cpuInfo, isCPUInfoLoaded } = useCPUInfo(5000);
   const totalSteps = getTotalSteps(job);
   const progress = (job.step / totalSteps) * 100;
@@ -125,8 +126,30 @@ export default function JobOverview({ job }: JobOverviewProps) {
             <div className="flex items-center space-x-4">
               <Cpu className="w-5 h-5 text-purple-600 dark:text-purple-400" />
               <div>
-                <p className="text-xs text-gray-400">Assigned GPUs</p>
-                <p className="text-sm font-medium text-gray-200">GPUs: {job.gpu_ids}</p>
+                <p className="text-xs text-gray-400">Assigned GPU</p>
+                {!['running', 'stopping'].includes(job.status) && allGpus.length > 0 ? (
+                  <select
+                    value={`${job.gpu_ids}`}
+                    onChange={async e => {
+                      const nextGpu = e.target.value;
+                      try {
+                        await updateJobGpu(job, nextGpu);
+                        if (onRefresh) onRefresh();
+                      } catch (err) {
+                        console.error('Failed to change GPU:', err);
+                      }
+                    }}
+                    className="mt-0.5 text-xs font-medium bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded px-2 py-1 text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                  >
+                    {allGpus.map(gpu => (
+                      <option key={gpu.index} value={`${gpu.index}`}>
+                        GPU #{gpu.index} ({gpu.name})
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="text-sm font-medium text-gray-200">GPU #{job.gpu_ids}</p>
+                )}
               </div>
             </div>
 
@@ -163,7 +186,9 @@ export default function JobOverview({ job }: JobOverviewProps) {
       {/* GPU Widget Panel */}
       <div className="md:col-span-1">
         <div>{isCPUInfoLoaded && cpuInfo && <CPUWidget cpu={cpuInfo} />}</div>
-        <div className="mt-4">{isGPUInfoLoaded && gpuList.length > 0 && <GPUWidget gpu={gpuList[0]} />}</div>
+        <div className="mt-4 space-y-4">
+          {isGPUInfoLoaded && gpuList.map(gpu => <GPUWidget key={gpu.index} gpu={gpu} />)}
+        </div>
         {jobType === 'train' && (
           <div className="mt-4">
             <FilesWidget jobID={job.id} jobName={job.name} />

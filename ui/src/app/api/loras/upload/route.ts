@@ -74,8 +74,8 @@ export async function POST(request: NextRequest) {
       const fileName = cleanFileName(sp.get('fileName'));
       if (!fileName) return err('File must be a .safetensors file');
       if (!parseSize(sp.get('size'))) return err('Invalid file size');
-      const dest = path.join(lorasRoot, fileName);
-      if (sp.get('overwrite') !== '1' && fs.existsSync(dest)) {
+      const dest = path.join(/*turbopackIgnore: true*/ lorasRoot, fileName);
+      if (sp.get('overwrite') !== '1' && fs.existsSync(/*turbopackIgnore: true*/ dest)) {
         return NextResponse.json({ error: 'A file with that name already exists', exists: true }, { status: 409 });
       }
       await fs.promises.mkdir(partDir, { recursive: true });
@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
     if (action === 'chunk') {
       const offset = Number(sp.get('offset'));
       if (!Number.isSafeInteger(offset) || offset < 0) return err('Invalid offset');
-      if (!fs.existsSync(part)) return err('Upload not found or expired', 404);
+      if (!fs.existsSync(/*turbopackIgnore: true*/ part)) return err('Upload not found or expired', 404);
       const buf = Buffer.from(await request.arrayBuffer());
       if (buf.length === 0) return err('Empty chunk');
       const fh = await fs.promises.open(part, 'r+');
@@ -108,14 +108,14 @@ export async function POST(request: NextRequest) {
       const fileName = cleanFileName(sp.get('fileName'));
       const size = parseSize(sp.get('size'));
       if (!fileName || !size) return err('Invalid fileName or size');
-      if (!fs.existsSync(part)) return err('Upload not found or expired', 404);
+      if (!fs.existsSync(/*turbopackIgnore: true*/ part)) return err('Upload not found or expired', 404);
       const st = await fs.promises.stat(part);
       if (st.size !== size) {
         await fs.promises.unlink(part).catch(() => { });
         return err(`Upload incomplete: got ${st.size} of ${size} bytes`);
       }
-      const dest = path.join(lorasRoot, fileName);
-      if (sp.get('overwrite') !== '1' && fs.existsSync(dest)) {
+      const dest = path.join(/*turbopackIgnore: true*/ lorasRoot, fileName);
+      if (sp.get('overwrite') !== '1' && fs.existsSync(/*turbopackIgnore: true*/ dest)) {
         await fs.promises.unlink(part).catch(() => { });
         return NextResponse.json({ error: 'A file with that name already exists', exists: true }, { status: 409 });
       }

@@ -98,6 +98,27 @@ export const markJobAsStopped = (jobID: string) => {
   });
 };
 
+export const updateJobGpu = (job: Job, gpuIds: string) => {
+  return new Promise<void>((resolve, reject) => {
+    const jobConfig = getJobConfig(job);
+    apiClient
+      .post('/api/jobs', {
+        id: job.id,
+        name: job.name,
+        gpu_ids: gpuIds,
+        job_config: jobConfig,
+      })
+      .then(res => res.data)
+      .then(() => {
+        resolve();
+      })
+      .catch(error => {
+        console.error('Error updating job GPU:', error);
+        reject(error);
+      });
+  });
+};
+
 export const getJobConfig = (job: Job) => {
   return JSON.parse(job.job_config) as JobConfig;
 };

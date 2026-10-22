@@ -142,9 +142,9 @@ export default function CaptionMonitor({ datasetPath, onHeightChange }: CaptionM
               </div>
             </div>
           </div>
-          <div className="w-96 flex-shrink-0 overflow-y-auto p-3 pl-0 hidden md:block">
+          <div className="w-96 flex-shrink-0 overflow-y-auto p-3 pl-0 hidden md:block space-y-3">
             {isGPUInfoLoaded && gpuList.length > 0 ? (
-              <GPUWidget gpu={gpuList[0]} />
+              gpuList.map(gpu => <GPUWidget key={gpu.index} gpu={gpu} />)
             ) : (
               <div className="flex items-center gap-2 text-xs text-gray-500 p-2">
                 <Cpu className="w-4 h-4" /> Loading GPU info...

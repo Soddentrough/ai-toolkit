@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     // Read caption file; a missing file just means no caption yet
     let caption: string;
     try {
-      caption = await fs.promises.readFile(captionPath, 'utf-8');
+      caption = await fs.promises.readFile(/*turbopackIgnore: true*/ captionPath, 'utf-8');
     } catch (err: any) {
       if (err?.code === 'ENOENT') {
         // send back blank string if caption file does not exist

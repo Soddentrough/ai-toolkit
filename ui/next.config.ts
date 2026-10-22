@@ -11,6 +11,7 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_APP_VERSION: appVersion,
   },
   serverExternalPackages: ['macstats', 'osx-temperature-sensor'],
+  turbopack: {},
   async rewrites() {
     return [
       {
@@ -18,12 +19,6 @@ const nextConfig: NextConfig = {
         destination: 'http://localhost:8866/:path*',
       },
     ];
-  },
-  webpack: (config, { isServer }) => {
-    if (isServer) {
-      config.externals.push('osx-temperature-sensor', 'macstats');
-    }
-    return config;
   },
   devIndicators: false,
   typescript: {
@@ -34,7 +29,7 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: '100gb',
     },
-    middlewareClientMaxBodySize: '100gb',
+    proxyClientMaxBodySize: '100gb',
   },
 };
 

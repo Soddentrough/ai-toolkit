@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import fsp from 'fs/promises';
 import path from 'path';
-import archiver from 'archiver';
+import { ZipArchive } from 'archiver';
 import { getDatasetsRoot, getTrainingFolder } from '@/server/settings';
 
 export const runtime = 'nodejs'; // ensure Node APIs are available
@@ -68,7 +68,7 @@ async function zipDataset(datasetName: string, captionsOnly: boolean) {
 
   await new Promise<void>((resolve, reject) => {
     const output = fs.createWriteStream(outputPath);
-    const archive = archiver('zip', { zlib: { level: 9 } });
+    const archive = new ZipArchive({ zlib: { level: 9 } });
 
     output.on('close', () => resolve());
     output.on('error', reject);
@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
     // Create write stream & archive
     await new Promise<void>((resolve, reject) => {
       const output = fs.createWriteStream(outputPath);
-      const archive = archiver('zip', { zlib: { level: 9 } });
+      const archive = new ZipArchive({ zlib: { level: 9 } });
 
       output.on('close', () => resolve());
       output.on('error', reject);

@@ -76,4 +76,10 @@ ensureJournalMode()
     // it automatically starts the loop
     const cronWorker = new CronWorker();
     console.log('Cron worker started with interval:', cronWorker.interval, 'ms');
+    const shutdown = () => {
+      clearInterval(cronWorker.intervalId);
+      process.exit(0);
+    };
+    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', shutdown);
   });
