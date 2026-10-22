@@ -43,6 +43,66 @@ class IdentityModule(torch.nn.Module):
     def forward(self, x):
         return x
 
+class _RocmFastFrozenLinearFn(torch.autograd.Function):
+    """
+    On ROCm (e.g. RDNA 4 gfx1201), PyTorch's default backward for frozen nn.Linear
+    computes `grad_input = grad_output @ weight` where `weight` is in row-major NN
+    layout (`Cijk_Ailk_Bljk`). For common transformer dimensions (such as N=3840),
+    hipBLASLt falls back to a slow MT16x16x32 kernel (~8 TFLOPS). Transposing `weight`
+    into TN layout (`weight.t().contiguous().t()`) dispatches to the full MT96x128x64
+    WMMA kernel (~90 TFLOPS, >10x faster).
+    """
+
+    @staticmethod
+    def forward(ctx, x, weight, bias):
+        ctx.save_for_backward(weight)
+        ctx.has_bias_grad = bias is not None and bias.requires_grad
+        return torch.nn.functional.linear(x, weight, bias)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        (weight,) = ctx.saved_tensors
+        grad_shape = grad_output.shape
+        grad_2d = grad_output.reshape(-1, grad_shape[-1])
+        if not grad_2d.is_contiguous():
+            grad_2d = grad_2d.contiguous()
+        # Only transpose into TN layout when in_features == 3840 (where hipBLASLt NN layout
+        # falls back to MT16x16x32); skip the transpose for 10240-wide layers (e.g. w2).
+        w_for_mm = weight.t().contiguous().t() if weight.shape[1] == 3840 else weight
+        grad_x = torch.mm(grad_2d, w_for_mm).view(*grad_shape[:-1], weight.shape[1])
+        grad_bias = grad_2d.sum(dim=0) if ctx.has_bias_grad else None
+        return grad_x, None, grad_bias
+
+
+def _make_rocm_fast_linear_forward(mod: torch.nn.Linear):
+    orig_forward = mod.forward
+
+    def _rocm_fast_linear_forward(x, *args, **kwargs):
+        if (
+            not args
+            and not kwargs
+            and torch.is_grad_enabled()
+            and isinstance(x, torch.Tensor)
+            and x.requires_grad
+            and x.is_cuda
+            and mod.weight is not None
+            and not mod.weight.requires_grad
+            and mod.weight.dim() == 2
+            and not getattr(mod, "is_ostris_quantized", False)
+            and not _is_quantized_tensor(mod.weight)
+        ):
+            w = mod.weight
+            b = mod.bias
+            if w.dtype != x.dtype and x.dtype in (torch.bfloat16, torch.float16):
+                w = w.to(x.dtype)
+                if b is not None and b.dtype != x.dtype:
+                    b = b.to(x.dtype)
+            return _RocmFastFrozenLinearFn.apply(x, w, b)
+        return orig_forward(x, *args, **kwargs)
+
+    return _rocm_fast_linear_forward
+
+
 class LoRAModule(ToolkitModuleMixin, ExtractableModuleMixin, torch.nn.Module):
     """
     replaces forward method of the original Linear, instead of replacing the original Linear module.
@@ -130,8 +190,16 @@ class LoRAModule(ToolkitModuleMixin, ExtractableModuleMixin, torch.nn.Module):
         self.is_checkpointing = False
 
     def apply_to(self):
-        self.org_forward = self.org_module[0].forward
-        self.org_module[0].forward = self.forward
+        om = self.org_module[0]
+        if (
+            getattr(torch.version, "hip", None) is not None
+            and type(om) is torch.nn.Linear
+            and not getattr(om, "_rocm_fast_linear_patched", False)
+        ):
+            om.forward = _make_rocm_fast_linear_forward(om)
+            om._rocm_fast_linear_patched = True
+        self.org_forward = om.forward
+        om.forward = self.forward
         # del self.org_module
 
 

@@ -342,23 +342,24 @@ class DiffusionTrainer(SDTrainer):
         if self.progress_bar is not None:
             rate = self.progress_bar.format_dict.get("rate")
         if rate:
+            sec_per_iter = 1 / rate
             if rate >= 1:
-                self.update_db_key("speed_string", f"{rate:.2f} iter/sec")
+                self.update_db_key("speed_string", f"{rate:.2f} it/s ({sec_per_iter:.2f} s/it)")
             else:
-                self.update_db_key("speed_string", f"{1 / rate:.2f} sec/iter")
+                self.update_db_key("speed_string", f"{sec_per_iter:.2f} s/it ({rate:.2f} it/s)")
             return
         # fallback: bar not available yet (no rate until its first refresh)
         if "train_loop" not in timing_dict:
             print("train_loop not found in timing_dict", timing_dict)
             return
         seconds_per_iter = timing_dict["train_loop"]
+        iters_per_sec = 1 / seconds_per_iter if seconds_per_iter > 0 else 0.0
         # determine iter/sec or sec/iter
         if seconds_per_iter < 1:
-            iters_per_sec = 1 / seconds_per_iter
-            self.update_db_key("speed_string", f"{iters_per_sec:.2f} iter/sec")
+            self.update_db_key("speed_string", f"{iters_per_sec:.2f} it/s ({seconds_per_iter:.2f} s/it)")
         else:
             self.update_db_key(
-                "speed_string", f"{seconds_per_iter:.2f} sec/iter")
+                "speed_string", f"{seconds_per_iter:.2f} s/it ({iters_per_sec:.2f} it/s)")
 
     def done_hook(self):
         super(DiffusionTrainer, self).done_hook()

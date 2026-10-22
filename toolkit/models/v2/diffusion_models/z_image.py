@@ -24,7 +24,7 @@ class ZImageTransformer2DModel(DiffusersZImageTransformer2DModel, OstrisModelMix
 
     @classmethod
     def get_transformer_block_names(cls):
-        return ["layers"]
+        return ["layers", "noise_refiner", "context_refiner"]
 
     def get_offload_ignore_modules(self):
         return [self.x_pad_token, self.cap_pad_token]

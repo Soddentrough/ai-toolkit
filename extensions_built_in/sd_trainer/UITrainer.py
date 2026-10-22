@@ -234,12 +234,12 @@ class UITrainer(SDTrainer):
             return
         seconds_per_iter = timing_dict["train_loop"]
         # determine iter/sec or sec/iter
+        iters_per_sec = 1 / seconds_per_iter if seconds_per_iter > 0 else 0.0
         if seconds_per_iter < 1:
-            iters_per_sec = 1 / seconds_per_iter
-            self.update_db_key("speed_string", f"{iters_per_sec:.2f} iter/sec")
+            self.update_db_key("speed_string", f"{iters_per_sec:.2f} it/s ({seconds_per_iter:.2f} s/it)")
         else:
             self.update_db_key(
-                "speed_string", f"{seconds_per_iter:.2f} sec/iter")
+                "speed_string", f"{seconds_per_iter:.2f} s/it ({iters_per_sec:.2f} it/s)")
 
     def done_hook(self):
         super(UITrainer, self).done_hook()

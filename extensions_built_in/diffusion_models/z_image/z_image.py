@@ -149,9 +149,10 @@ class ZImageModel(BaseModel):
         # add the assistant so sampler will activate it while sampling
         self.assistant_lora: LoRASpecialNetwork = network
 
-        # deactivate lora during training
+        # deactivate lora during training and offload adapter weights to CPU until sampling
         self.assistant_lora.multiplier = -1.0
         self.assistant_lora.is_active = False
+        self.assistant_lora.force_to("cpu", dtype=self.torch_dtype)
 
         # tell the model to invert assistant on inference since we want remove lora effects
         self.invert_assistant_lora = True
@@ -193,6 +194,34 @@ class ZImageModel(BaseModel):
             qtype=self.model_config.qtype if self.model_config.quantize else None,
             quantize_on_load=False,
         )
+        # Use PyTorch's native fused F.rms_norm instead of diffusers' unfused FP32 RMSNorm.forward
+        if hasattr(torch.nn.functional, "rms_norm"):
+            try:
+                from diffusers.models.normalization import RMSNorm as _DiffusersRMSNorm
+
+                def _fused_rms_norm_forward(self_norm, hidden_states):
+                    if self_norm.bias is None and self_norm.weight is not None:
+                        if hidden_states.dtype != self_norm.weight.dtype:
+                            hidden_states = hidden_states.to(self_norm.weight.dtype)
+                        return torch.nn.functional.rms_norm(
+                            hidden_states, self_norm.dim, self_norm.weight, self_norm.eps
+                        )
+                    input_dtype = hidden_states.dtype
+                    variance = hidden_states.to(torch.float32).pow(2).mean(-1, keepdim=True)
+                    hidden_states = hidden_states * torch.rsqrt(variance + self_norm.eps)
+                    if self_norm.weight is not None:
+                        if self_norm.weight.dtype in (torch.float16, torch.bfloat16):
+                            hidden_states = hidden_states.to(self_norm.weight.dtype)
+                        hidden_states = hidden_states * self_norm.weight
+                        if self_norm.bias is not None:
+                            hidden_states = hidden_states + self_norm.bias
+                    else:
+                        hidden_states = hidden_states.to(input_dtype)
+                    return hidden_states
+
+                _DiffusersRMSNorm.forward = _fused_rms_norm_forward
+            except Exception:
+                pass
         flush()
 
         return transformer, base_model_path
