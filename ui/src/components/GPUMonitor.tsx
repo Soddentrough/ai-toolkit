@@ -1,12 +1,13 @@
 import React, { useMemo } from 'react';
 import Loading from '@/components/Loading';
 import GPUWidget from '@/components/GPUWidget';
+import CPUWidget from '@/components/CPUWidget';
 import useMonitorStream from '@/hooks/useMonitorStream';
 
 const GpuMonitor: React.FC = () => {
   // Live samples arrive every MONITOR_TICK_MS over the shared /api/monitor SSE stream
-  const { gpu: gpuData, lastUpdated } = useMonitorStream();
-  const loading = gpuData === null;
+  const { cpu: cpuData, gpu: gpuData, lastUpdated } = useMonitorStream();
+  const loading = gpuData === null && cpuData === null;
   const error = null;
 
   const getGridClasses = (gpuCount: number): string => {
@@ -76,18 +77,21 @@ const GpuMonitor: React.FC = () => {
     const gridClass = getGridClasses(gpuData?.gpus?.length || 1);
 
     return (
-      <div className={`grid ${gridClass} gap-3`}>
-        {gpuData.gpus.map((gpu, idx) => (
-          <GPUWidget key={idx} gpu={gpu} />
-        ))}
+      <div className="space-y-3">
+        {cpuData && <CPUWidget cpu={cpuData} />}
+        <div className={`grid ${gridClass} gap-3`}>
+          {gpuData.gpus.map(gpu => (
+            <GPUWidget key={gpu.index} gpu={gpu} />
+          ))}
+        </div>
       </div>
     );
-  }, [loading, gpuData, error]);
+  }, [loading, cpuData, gpuData, error]);
 
   return (
     <div className="w-full">
       <div className="flex justify-between items-center mb-2">
-        <h1 className="text-md">GPU Monitor</h1>
+        <h1 className="text-md">Compute & GPU Monitor</h1>
         <div className="text-xs text-gray-500">Last updated: {lastUpdated?.toLocaleTimeString()}</div>
       </div>
       {content}

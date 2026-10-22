@@ -1,5 +1,6 @@
 import { spawn, execFile, ChildProcess } from 'child_process';
 import { promisify } from 'util';
+import fs from 'fs';
 import os from 'os';
 import si from 'systeminformation';
 import { loadMacstats } from '@/server/macstats';

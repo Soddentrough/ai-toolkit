@@ -48,11 +48,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Error uploading files' }, { status: 500 });
   }
 }
-
-// Increase payload size limit (default is 4mb)
-export const config = {
-  api: {
-    bodyParser: false,
-    responseLimit: '50mb',
-  },
-};

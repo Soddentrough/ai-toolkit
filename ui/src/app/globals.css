@@ -1,6 +1,31 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+  --color-gray-950: rgb(var(--gray-950));
+  --color-gray-900: rgb(var(--gray-900));
+  --color-gray-800: rgb(var(--gray-800));
+  --color-gray-700: rgb(var(--gray-700));
+  --color-gray-600: rgb(var(--gray-600));
+  --color-gray-500: rgb(var(--gray-500));
+  --color-gray-400: rgb(var(--gray-400));
+  --color-gray-300: rgb(var(--gray-300));
+  --color-gray-200: rgb(var(--gray-200));
+  --color-gray-100: rgb(var(--gray-100));
+
+  --color-yellow-950: #1a1203;
+  --color-yellow-900: #2a1c05;
+  --color-yellow-800: #3a2607;
+  --color-yellow-700: #5a3a0b;
+  --color-yellow-600: #7a4e0f;
+  --color-yellow-500: #f59e0b;
+  --color-yellow-400: #fbbf24;
+  --color-yellow-300: #fcd34d;
+  --color-yellow-200: #fde68a;
+  --color-yellow-100: #fef3c7;
+  --color-yellow-50: #fffbeb;
+}
+
+@custom-variant dark (&:where(.dark, .dark *));
 
 /* Light mode (default root values, overridden by .dark) */
 :root {

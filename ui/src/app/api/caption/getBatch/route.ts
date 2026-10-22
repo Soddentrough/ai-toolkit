@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
       const captionPath = imgPath.replace(/\.[^/.]+$/, '') + '.' + captionExt;
       try {
         // Missing file (ENOENT) or any read error falls back to an empty caption.
-        captions[imgPath] = await fs.promises.readFile(captionPath, 'utf-8');
+        captions[imgPath] = await fs.promises.readFile(/*turbopackIgnore: true*/ captionPath, 'utf-8');
       } catch {
         captions[imgPath] = '';
       }

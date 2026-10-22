@@ -23,9 +23,14 @@ export default function GPUWidget({ gpu }: GPUWidgetProps) {
     <div className="bg-gray-900 rounded-xl shadow-lg overflow-hidden border border-gray-800">
       <div className="bg-gray-800 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center space-x-2">
+          <span className="px-2 py-0.5 bg-blue-900/60 border border-blue-700/50 rounded-full text-xs font-semibold text-blue-300">
+            GPU #{gpu.index}
+          </span>
           <h2 className="font-semibold text-gray-100">{gpu.name}</h2>
-          <span className="px-2 py-0.5 bg-gray-700 rounded-full text-xs text-gray-300"># {gpu.index}</span>
         </div>
+        {gpu.driverVersion && (
+          <span className="text-xs text-gray-400 hidden sm:inline">Driver: {gpu.driverVersion}</span>
+        )}
       </div>
 
       <div className="p-4 space-y-4">
@@ -50,7 +55,7 @@ export default function GPUWidget({ gpu }: GPUWidgetProps) {
           <div>
             <div className="flex items-center space-x-2 mb-1">
               <Cpu className="w-4 h-4 text-gray-400" />
-              <p className="text-xs text-gray-400">GPU Load</p>
+              <p className="text-xs text-gray-400">GPU #{gpu.index} Load</p>
               <span className="text-xs text-gray-300 ml-auto">{gpu.utilization.gpu}%</span>
             </div>
             <div className="w-full bg-gray-700 rounded-full h-1">

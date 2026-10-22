@@ -64,9 +64,9 @@ const transpile = async (file: string, source: string): Promise<string> => {
 
 const findUiFile = (pkgDir: string): string | null => {
   for (const name of UI_FILE_NAMES) {
-    const file = path.join(pkgDir, name);
+    const file = path.join(/*turbopackIgnore: true*/ pkgDir, name);
     try {
-      if (fs.statSync(file).isFile()) return file;
+      if (fs.statSync(/*turbopackIgnore: true*/ file).isFile()) return file;
     } catch {
       /* not present */
     }
@@ -83,10 +83,10 @@ export const listExtensionUiModules = async (): Promise<{
   const errors: ExtensionUiError[] = [];
   const seen = new Set<string>();
   for (const dir of EXTENSION_DIRS) {
-    const root = path.join(TOOLKIT_ROOT, dir);
+    const root = path.join(/*turbopackIgnore: true*/ TOOLKIT_ROOT, dir);
     let entries: fs.Dirent[] = [];
     try {
-      entries = fs.readdirSync(root, { withFileTypes: true });
+      entries = fs.readdirSync(/*turbopackIgnore: true*/ root, { withFileTypes: true });
     } catch {
       continue;
     }
@@ -95,18 +95,18 @@ export const listExtensionUiModules = async (): Promise<{
       .map(e => e.name)
       .sort();
     for (const pkg of pkgs) {
-      const file = findUiFile(path.join(root, pkg));
+      const file = findUiFile(path.join(/*turbopackIgnore: true*/ root, pkg));
       if (!file) continue;
       const id = `${dir}/${pkg}`;
       seen.add(id);
       try {
-        const mtimeMs = fs.statSync(file).mtimeMs;
+        const mtimeMs = fs.statSync(/*turbopackIgnore: true*/ file).mtimeMs;
         const cached = cache.get(id);
         if (cached && cached.file === file && cached.mtimeMs === mtimeMs) {
           modules.push(cached);
           continue;
         }
-        const source = await fs.promises.readFile(file, 'utf8');
+        const source = await fs.promises.readFile(/*turbopackIgnore: true*/ file, 'utf8');
         const code = await transpile(file, source);
         const mod = { id, file, mtimeMs, code };
         cache.set(id, mod);

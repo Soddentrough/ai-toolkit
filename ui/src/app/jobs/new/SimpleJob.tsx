@@ -349,7 +349,7 @@ export default function SimpleJob({
                     value={`${gpuIDs}`}
                     docKey="gpuids"
                     onChange={value => setGpuIDs(value)}
-                    options={gpuList.map((gpu: any) => ({ value: `${gpu.index}`, label: `GPU #${gpu.index}` }))}
+                    options={gpuList.map((gpu: any) => ({ value: `${gpu.index}`, label: `GPU #${gpu.index} (${gpu.name})` }))}
                   />
                 </div>
               )}

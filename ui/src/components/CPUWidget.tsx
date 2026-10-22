@@ -39,17 +39,27 @@ export default function CPUWidget({ cpu }: CPUWidgetProps) {
       <div className="bg-gray-800 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center space-x-2">
           <h2 className="font-semibold text-gray-100">{cpu.name}</h2>
-          {/* <span className="px-2 py-0.5 bg-gray-700 rounded-full text-xs text-gray-300">#{1}</span> */}
+          <span className="px-2 py-0.5 bg-gray-700 rounded-full text-xs text-gray-300">
+            CPU ({cpu.cores} Threads)
+          </span>
         </div>
+        {cpu.temperature > 0 && (
+          <div className="flex items-center space-x-1.5">
+            <Thermometer className={`w-4 h-4 ${getTemperatureColor(cpu.temperature)}`} />
+            <span className={`text-sm font-medium ${getTemperatureColor(cpu.temperature)}`}>
+              {cpu.temperature.toFixed(1)}°C
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="p-4 space-y-4">
         {/* Temperature, Fan, and Utilization Section */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="">
             <div className="flex items-center space-x-2 mb-1 mt-1">
               <Cpu className="w-4 h-4 text-gray-400" />
-              <p className="text-xs text-gray-400">CPU Load</p>
+              <p className="text-xs text-gray-400">CPU Load ({cpu.cores} Threads)</p>
               <span className="text-xs text-gray-300 ml-auto">{cpu.currentLoad.toFixed(1)}%</span>
             </div>
             <div className="w-full bg-gray-700 rounded-full h-1">
@@ -62,7 +72,7 @@ export default function CPUWidget({ cpu }: CPUWidgetProps) {
           <div>
             <div className="flex items-center space-x-2 mb-1 mt-1">
               <HardDrive className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-              <p className="text-xs text-gray-400">Memory</p>
+              <p className="text-xs text-gray-400">System Memory</p>
               <span className="text-xs text-gray-300 ml-auto">
                 {(((cpu.totalMemory - cpu.availableMemory) / cpu.totalMemory) * 100).toFixed(1)}%
               </span>

@@ -11,7 +11,7 @@ import { startQueue, stopQueue } from '@/utils/queue';
 import { CgSpinner } from 'react-icons/cg';
 import useGPUInfo from '@/hooks/useGPUInfo';
 import { openConfirm } from '@/components/ConfirmModal';
-import { deleteJob, getTotalSteps, stopJob } from '@/utils/jobs';
+import { deleteJob, getTotalSteps, stopJob, updateJobGpu } from '@/utils/jobs';
 import { Trash2 } from 'lucide-react';
 
 interface JobsTableProps {
@@ -183,6 +183,33 @@ export default function JobsTable({ onlyActive = false, job_type = null }: JobsT
     {
       title: 'GPU',
       key: 'gpu_ids',
+      render: row => {
+        const canChangeGpu = !['running', 'stopping'].includes(row.status) && gpuList.length > 0;
+        if (!canChangeGpu) {
+          return <span>GPU #{row.gpu_ids}</span>;
+        }
+        return (
+          <select
+            value={`${row.gpu_ids}`}
+            onChange={async e => {
+              const nextGpu = e.target.value;
+              try {
+                await updateJobGpu(row, nextGpu);
+                refresh();
+              } catch (err) {
+                console.error('Failed to change GPU:', err);
+              }
+            }}
+            className="text-xs bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded px-2 py-1 text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+          >
+            {gpuList.map(gpu => (
+              <option key={gpu.index} value={`${gpu.index}`}>
+                GPU #{gpu.index}
+              </option>
+            ))}
+          </select>
+        );
+      },
     },
     {
       title: 'Status',
@@ -206,14 +233,13 @@ export default function JobsTable({ onlyActive = false, job_type = null }: JobsT
       key: 'actions',
       className: 'text-right',
       render: row => {
-        return <JobActionBar job={row} onRefresh={refreshJobs} autoStartQueue={false} />;
+        return <JobActionBar job={row} onRefresh={refresh} autoStartQueue={true} />;
       },
     },
   ];
 
   const jobsDict = useMemo(() => {
     if (!isGPUInfoLoaded) return {};
-    if (jobs.length === 0) return {};
     let jd: { [key: string]: { name: string; jobs: Job[] } } = {};
     gpuList.forEach(gpu => {
       jd[`${gpu.index}`] = { name: `${gpu.name}`, jobs: [] };
@@ -221,7 +247,7 @@ export default function JobsTable({ onlyActive = false, job_type = null }: JobsT
     jd['Idle'] = { name: 'Idle', jobs: [] };
     jobs.forEach(job => {
       const gpu = gpuList.find(gpu => job.gpu_ids?.split(',').includes(gpu.index.toString())) as GpuInfo;
-      const key = `${gpu?.index || '0'}`;
+      const key = `${gpu?.index ?? '0'}`;
       if (['queued', 'running', 'stopping'].includes(job.status) && key in jd) {
         jd[key].jobs.push(job);
       } else {
@@ -244,7 +270,7 @@ export default function JobsTable({ onlyActive = false, job_type = null }: JobsT
       }
     });
     return jd;
-  }, [jobs, queues, isGPUInfoLoaded]);
+  }, [jobs, queues, isGPUInfoLoaded, gpuList]);
 
   let isLoading = status === 'loading' || queueStatus === 'loading' || !isGPUInfoLoaded;
 
@@ -299,10 +325,10 @@ export default function JobsTable({ onlyActive = false, job_type = null }: JobsT
                 )}
               >
                 <div className="flex items-center space-x-2 flex-1 min-w-0 py-2">
-                  <h2 className="font-semibold text-white truncate">{jobsDict[gpuKey].name}</h2>
-                  <span className="px-2 py-0.5 bg-gray-700 rounded-full text-xs text-gray-300 flex-shrink-0">
-                    # {queue?.gpu_ids}
+                  <span className="px-2 py-0.5 bg-gray-800/80 rounded-full text-xs font-semibold text-gray-200 flex-shrink-0">
+                    GPU #{queue?.gpu_ids ?? gpuKey}
                   </span>
+                  <h2 className="font-semibold text-white truncate">{jobsDict[gpuKey].name}</h2>
                 </div>
                 <div className="text-sm text-gray-300 italic flex items-center flex-shrink-0">
                   {queue?.is_running ? (
@@ -349,10 +375,13 @@ export default function JobsTable({ onlyActive = false, job_type = null }: JobsT
           );
         })}
       {!onlyActive && Object.keys(jobsDict).includes('Idle') && (
-        <div className="mb-6 opacity-50">
-          <div className="text-md flex px-4 py-1 rounded-t-lg bg-slate-600">
+        <div className="mb-6">
+          <div className="text-md flex px-4 py-1 rounded-t-lg bg-slate-700 dark:bg-slate-800">
             <div className="flex items-center space-x-2 flex-1 py-2">
-              <h2 className="font-semibold text-gray-100">Idle</h2>
+              <h2 className="font-semibold text-gray-100">Idle / Pending Jobs</h2>
+              <span className="px-2 py-0.5 bg-gray-900/70 rounded-full text-xs text-gray-300">
+                {jobsDict['Idle'].jobs.length}
+              </span>
             </div>
           </div>
           <UniversalTable columns={columns} rows={jobsDict['Idle'].jobs} isLoading={isLoading} onRefresh={refresh} />

@@ -1,4 +1,4 @@
-// middleware.ts (at the root of your project)
+// proxy.ts (at the root of your project)
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
@@ -6,7 +6,7 @@ import type { NextRequest } from 'next/server';
 // album art is fetched by plain <img> tags, which cannot send the bearer token
 const publicRoutes = ['/api/img/', '/api/files/', '/api/audio/art/'];
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   // check env var for AI_TOOLKIT_AUTH, if not set, approve all requests
   // if it is set make sure bearer token matches
   const tokenToUse = process.env.AI_TOOLKIT_AUTH || null;
