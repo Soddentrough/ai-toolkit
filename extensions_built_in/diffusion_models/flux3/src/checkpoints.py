@@ -19,8 +19,11 @@ COMFY_REPO = "black-forest-labs/flux-3-image-klein-comfy"
 # encoder stays on the Comfy-Org Qwen3-VL repack (src/text_encoder.py).
 COMFY_TRANSFORMER_FILES = [
     "diffusion_models/flux3_image_klein_int8_convrot.safetensors",
+    "diffusion_models/flux3-image-klein-base-int8-convrot.safetensors",
     "diffusion_models/flux3_image_klein_bf16.safetensors",
+    "diffusion_models/flux3-image-klein-base-bf16.safetensors",
     "diffusion_models/flux3_image_klein_nvfp4.safetensors",
+    "diffusion_models/flux3-image-klein-base-nvfp4.safetensors",
 ]
 # same weights as Comfy-Org's FLUX.2 VAE file of the same name (that one is in
 # the diffusers key layout; the loader accepts both)

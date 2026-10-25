@@ -334,12 +334,18 @@ class ZImageModel(BaseModel):
         # CFG is 0 normalized for this model
         guidance = max(0.0, gen_config.guidance_scale - 1.0)
 
+        orig_tile_latent_min = getattr(pipeline.vae, "tile_latent_min_size", None)
+        orig_tile_sample_min = getattr(pipeline.vae, "tile_sample_min_size", None)
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
             try:
                 free_bytes, _ = torch.cuda.mem_get_info(self.device_torch)
                 if free_bytes < 8 * 1024**3 and hasattr(pipeline.vae, "enable_tiling"):
                     pipeline.vae.enable_tiling()
+                    # AutoencoderKL defaults tile_latent_min_size to 128 (1024px) and uses strict '>',
+                    # which skips tiling on 1024x1024 samples unless lowered.
+                    pipeline.vae.tile_latent_min_size = min(orig_tile_latent_min or 64, 64)
+                    pipeline.vae.tile_sample_min_size = min(orig_tile_sample_min or 512, 512)
             except Exception:
                 pass
 
@@ -356,6 +362,10 @@ class ZImageModel(BaseModel):
         ).images[0]
         if hasattr(pipeline.vae, "disable_tiling"):
             pipeline.vae.disable_tiling()
+        if orig_tile_latent_min is not None:
+            pipeline.vae.tile_latent_min_size = orig_tile_latent_min
+        if orig_tile_sample_min is not None:
+            pipeline.vae.tile_sample_min_size = orig_tile_sample_min
         return img
 
     def get_noise_prediction(
