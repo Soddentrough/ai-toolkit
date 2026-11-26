@@ -345,6 +345,7 @@ class BaseSDTrainProcess(BaseTrainProcess):
                 guidance_scale=sample_item.guidance_scale,
                 guidance_rescale=sample_config.guidance_rescale,
                 num_inference_steps=sample_item.sample_steps,
+                sigmas=sample_item.sigmas,
                 network_multiplier=sample_item.network_multiplier,
                 output_path=output_path,
                 output_ext=sample_config.ext,
@@ -961,22 +962,21 @@ class BaseSDTrainProcess(BaseTrainProcess):
         return sigma
     
     def get_optimal_noise(self, latents, dtype=torch.float32):
-        batch_num = latents.shape[0]
-        chunks = torch.chunk(latents, batch_num, dim=0)
-        noise_chunks = []
-        for chunk in chunks:
-            noise_samples = [torch.randn_like(chunk, device=chunk.device, dtype=dtype) for _ in range(self.train_config.optimal_noise_pairing_samples)]
-            # find the one most similar to the chunk
-            lowest_loss = 999999999999
-            best_noise = None
-            for noise in noise_samples:
-                loss = torch.nn.functional.mse_loss(chunk, noise)
-                if loss < lowest_loss:
-                    lowest_loss = loss
-                    best_noise = noise
-            noise_chunks.append(best_noise)
-        noise = torch.cat(noise_chunks, dim=0)
-        return noise
+        # same distribution as keeping the best aligned of N noises, from one draw
+        num_candidates = self.train_config.optimal_noise_pairing_samples
+        noise = torch.randn_like(latents, dtype=dtype)
+        # one pick per channel
+        group_dims = tuple(range(2, latents.dim()))
+        float_latents = latents.float()
+        # clamp so an all zero latent gets plain noise instead of nan
+        latent_direction = float_latents / torch.linalg.vector_norm(float_latents, dim=group_dims, keepdim=True).clamp_min(1e-8)
+        current_alignment = (noise.float() * latent_direction).sum(dim=group_dims, keepdim=True)
+        picked_alignment = torch.randn(*current_alignment.shape, abs(num_candidates), device=latents.device).amax(dim=-1)
+        # negative count keeps the worst aligned instead
+        if num_candidates < 0:
+            picked_alignment = -picked_alignment
+        correction = (picked_alignment - current_alignment) * latent_direction
+        return noise + correction.to(dtype)
     
     def get_consistent_noise(self, latents, batch: 'DataLoaderBatchDTO', dtype=torch.float32):
         batch_num = latents.shape[0]
@@ -1007,7 +1007,7 @@ class BaseSDTrainProcess(BaseTrainProcess):
         batch: 'DataLoaderBatchDTO' = None,
         timestep=None,
     ):
-        if self.train_config.optimal_noise_pairing_samples > 1:
+        if abs(self.train_config.optimal_noise_pairing_samples) > 1:
             noise = self.get_optimal_noise(latents, dtype=dtype)
         elif self.train_config.force_consistent_noise:
             if batch is None:
@@ -1232,7 +1232,16 @@ class BaseSDTrainProcess(BaseTrainProcess):
                 if is_reg:
                     content_or_style = self.train_config.content_or_style_reg
 
-                if self.train_config.timestep_type in ['two_step', 'four_step', 'eight_step']:
+                if getattr(self.sd.noise_scheduler, 'fixed_train_sigmas', None) is not None:
+                    # the scheduler's timesteps are the model's own sampling schedule
+                    timestep_indices = torch.randint(
+                        0,
+                        len(self.sd.noise_scheduler.timesteps),
+                        (batch_size,),
+                        device=self.device_torch
+                    )
+                    timestep_indices = timestep_indices.long()
+                elif self.train_config.timestep_type in ['two_step', 'four_step', 'eight_step']:
                     if self.train_config.timestep_type == 'two_step':
                         indice_choices = [0, 499]
                     elif self.train_config.timestep_type == 'four_step':
@@ -1337,14 +1346,11 @@ class BaseSDTrainProcess(BaseTrainProcess):
                 noise = noise * noise_multiplier
                 
                 if self.train_config.do_signal_correction_noise:
-                    batch_noise = latents.clone().to(noise.device, dtype=noise.dtype)
-                    scn_scale = torch.randn(
-                        batch_noise.shape[0], batch_noise.shape[1], 1, 1,
-                        device=batch_noise.device, 
-                        dtype=batch_noise.dtype
-                    ) * self.train_config.signal_correction_noise_scale
-                    batch_noise = batch_noise * scn_scale
-                    noise = noise + batch_noise 
+                    # inverted copy of the latent, tapered to zero at pure noise so the input never inverts
+                    scn_scale = self.train_config.signal_correction_noise_scale
+                    scn_t = (timesteps.to(noise.device, dtype=torch.float32) / 1000.0).view(-1, *([1] * (noise.dim() - 1)))
+                    scn_strength = scn_scale * (1.0 - scn_t) / (1.0 - scn_t + scn_scale * scn_t)
+                    noise = noise - latents.to(noise.device, dtype=noise.dtype) * scn_strength.to(noise.dtype)
                 
                 if self.train_config.do_batch_noise_correction:
                     if latents.shape[0] == 1:

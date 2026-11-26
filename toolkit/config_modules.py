@@ -54,6 +54,7 @@ class SampleItem:
         self.seed: Optional[int] = kwargs.get('seed', None) # if none, default to autogen seed
         self.guidance_scale: float = kwargs.get('guidance_scale', sample_config.guidance_scale)
         self.sample_steps: int = kwargs.get('sample_steps', sample_config.sample_steps)
+        self.sigmas: Optional[List[float]] = kwargs.get('sigmas', sample_config.sigmas)
         self.fps: int = kwargs.get('fps', sample_config.fps)
         self.num_frames: int = kwargs.get('num_frames', sample_config.num_frames)
         # audio models: max seconds to generate
@@ -89,6 +90,8 @@ class SampleConfig:
         self.walk_seed = kwargs.get('walk_seed', False)
         self.guidance_scale = kwargs.get('guidance_scale', 7)
         self.sample_steps = kwargs.get('sample_steps', 20)
+        # explicit sigma schedule, 1.0 = pure noise, 0.0 = clean. Descending; the final 0.0 is added automatically, so [1.0, 0.5] = 2 steps. Overrides sample_steps
+        self.sigmas: Optional[List[float]] = kwargs.get('sigmas', None)
         self.network_multiplier = kwargs.get('network_multiplier', 1)
         self.guidance_rescale = kwargs.get('guidance_rescale', 0.0)
         self.ext: ImgExt = kwargs.get('format', 'jpg')
@@ -431,7 +434,7 @@ class TrainConfig:
         self.do_signal_amplification = kwargs.get('do_signal_amplification', False)
         self.signal_amplification_strength = kwargs.get('signal_amplification_strength', 0.5)
         
-        self.signal_correction_noise_scale = kwargs.get('signal_correction_noise_scale', 1.0)
+        self.signal_correction_noise_scale = kwargs.get('signal_correction_noise_scale', 0.05)
         self.random_noise_shift = kwargs.get('random_noise_shift', 0.0)
         self.img_multiplier = kwargs.get('img_multiplier', 1.0)
         self.noisy_latent_multiplier = kwargs.get('noisy_latent_multiplier', 1.0)
@@ -1185,10 +1188,15 @@ class GenerateImageConfig:
             duration: Optional[float] = None,  # audio models: max seconds
             ctrl_idx: int = 0,
             do_cfg_norm: bool = False,
+            sigmas: Optional[List[float]] = None,  # explicit schedule; replaces num_inference_steps
     ):
         self.width: int = width
         self.height: int = height
         self.num_inference_steps: int = num_inference_steps
+        from toolkit.sample_sigmas import normalize_sample_sigmas
+        self.sigmas: Optional[List[float]] = normalize_sample_sigmas(sigmas)
+        if self.sigmas is not None:
+            self.num_inference_steps = len(self.sigmas)
         self.guidance_scale: float = guidance_scale
         self.guidance_rescale: float = guidance_rescale
         self.prompt: str = prompt
